@@ -48,6 +48,9 @@ TEMPLATES = [
 ROOT_URLCONF = 'urls'
 
 STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -68,3 +71,12 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
+
+# 告诉 Django：登录成功后，跳转到大屏页
+LOGIN_REDIRECT_URL = '/dashboard/'
+
+# 告诉 Django：退出登录后，跳回首页（登录页）
+LOGOUT_REDIRECT_URL = '/'
+
+# 告诉 Django：如果有未登录的访客想强行访问内部网页，全部踢回首页（登录页）
+LOGIN_URL = '/'

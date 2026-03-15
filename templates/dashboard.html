@@ -1,254 +1,422 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧餐厅运营监控大屏</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <title>智慧餐厅管理系统</title>
+    <script src="{% static 'js/echarts.min.js' %}" onerror="this.onerror=null;this.src='https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js'"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+        :root {
+            --bg-light: #f4f7f6;      
+            --card-bg: #ffffff;       
+            --text-main: #333333;     
+            --text-sub: #666666;      
+            --accent-blue: #1890ff;   
+            --accent-green: #52c41a;  
+            --accent-red: #ff4d4f;    
+            --border-color: #ebeef5;  
+            --sidebar-width: 250px;   
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+
+        * { box-sizing: border-box; }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--bg-light); 
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden; 
         }
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin-bottom: 30px;
+
+        /* ---------------- 【新增：整体左右分栏布局】 ---------------- */
+        .app-wrapper { display: flex; height: 100vh; width: 100vw; }
+
+        /* ---------------- 【左侧导航侧边栏】 ---------------- */
+        .sidebar {
+            width: var(--sidebar-width); background: var(--card-bg); border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; box-shadow: 2px 0 8px rgba(0,0,0,0.02); z-index: 10;
         }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            text-align: center;
-            flex: 1;
-            margin: 0 10px;
+        .sidebar-logo {
+            height: 80px; display: flex; align-items: center; padding: 0 24px; font-size: 20px;
+            font-weight: bold; color: var(--accent-blue); border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
         }
-        .charts {
-            display: flex;
-            justify-content: space-between;
+        .sidebar-logo span { margin-right: 10px; font-size: 24px; }
+        .sidebar-menu { flex: 1; padding: 20px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .menu-item {
+            display: flex; align-items: center; padding: 12px 16px; color: var(--text-main);
+            text-decoration: none; font-size: 15px; border-radius: 8px; transition: all 0.2s;
         }
-        .chart {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 48%;
+        .menu-item:hover { background: #f0f7ff; color: var(--accent-blue); }
+        .menu-item.active { background: #e6f7ff; color: var(--accent-blue); font-weight: 600; border-right: 4px solid var(--accent-blue); border-radius: 8px 0 0 8px; }
+        .menu-item .icon { margin-right: 12px; font-size: 18px; }
+
+        /* ---------------- 【右侧主体内容区】 ---------------- */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 24px 32px; }
+        .dashboard-container { width: 100%; max-width: 1600px; margin: 0 auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+
+        .account-area {
+            display: flex; align-items: center; gap: 15px; background: var(--card-bg);
+            padding: 6px 16px 6px 6px; border-radius: 30px; border: 1px solid var(--border-color); box-shadow: 0 2px 6px rgba(0,0,0,0.02);
         }
-        .chart h3 {
-            margin-top: 0;
+        .avatar {
+            width: 32px; height: 32px; background: #e6f7ff; color: var(--accent-blue); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;
         }
-        .dishes-section {
-            margin-bottom: 30px;
+        .user-info { display: flex; flex-direction: column; line-height: 1.2; }
+        .user-name { font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 2px; }
+        .user-role { font-size: 11px; color: var(--text-sub); }
+        .logout-btn { color: var(--accent-red); text-decoration: none; font-size: 13px; font-weight: 500; padding-left: 15px; border-left: 1px solid var(--border-color); }
+        .logout-btn:hover { opacity: 0.7; }
+
+        .stats { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+        .stat-card { 
+            background: var(--card-bg); padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: center; flex: 1; 
+            border: 1px solid var(--border-color); position: relative; transition: all 0.3s ease;
         }
-        .dishes-section h2 {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #333;
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--accent-blue); border-top-left-radius: 12px; border-top-right-radius: 12px; }
+        .stat-card:nth-child(2)::before { background: var(--accent-green); }
+        .stat-card:nth-child(3)::before { background: #faad14; }
+        .stat-card h2 { margin: 0; font-size: 36px; color: var(--text-main); font-weight: bold; }
+        .stat-card p { margin: 8px 0 0 0; color: var(--text-sub); font-size: 14px; }
+        .stat-card .cyan-text { color: var(--accent-blue); }
+        .stat-card .green-text { color: var(--accent-green); }
+        .stat-card .orange-text { color: #faad14; }
+
+        .charts-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 24px; 
+            margin-bottom: 24px; 
         }
-        .dishes-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-        }
-        .dish-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .dish-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-        }
-        .dish-card h3 {
-            margin: 0 0 10px 0;
-            color: #2c3e50;
-            font-size: 18px;
-        }
-        .dish-card .category {
-            color: #7f8c8d;
-            font-size: 14px;
-            margin: 5px 0;
-        }
-        .dish-card .price {
-            color: #e74c3c;
-            font-size: 16px;
-            font-weight: bold;
-            margin: 10px 0 0 0;
+        .chart-container { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid var(--border-color); }
+        .chart-container h3 { margin-top: 0; font-weight: 600; font-size: 16px; border-left: 4px solid var(--accent-blue); padding-left: 10px; }
+
+        /* 按钮通用样式 */
+        .btn-primary { background: var(--accent-blue); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; text-decoration: none; transition: all 0.2s; }
+        .btn-primary:hover { opacity: 0.8; transform: translateY(-1px); }
+
+        .prediction-table { width: 100%; margin-top: 20px; border-collapse: collapse; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); }
+        .prediction-table th { background-color: #fafafa; padding: 12px; font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        .prediction-table td { padding: 12px; text-align: center; border-bottom: 1px solid var(--border-color); }
+        .prediction-table tr:hover td { background-color: #f5f8ff; }
+        .prediction-table tr:last-child td { border-bottom: none; }
+        #chart-error { color: var(--accent-red); text-align: center; font-weight: bold; }
+
+        /* 🌟 AI 建议卡片特有样式 */
+        .ai-card { background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%); border-left: 4px solid var(--accent-blue); }
+        .ai-title { color: var(--accent-blue); font-size: 18px; margin-bottom: 12px; display: flex; align-items: center; font-weight: bold; }
+        .ai-text { font-size: 15px; line-height: 1.6; color: var(--text-main); font-weight: 500; }
+        
+        /* 🌟 弹窗样式 */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(4px); }
+        .modal-content { background: #fff; width: 90%; max-width: 650px; border-radius: 12px; padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-height: 85vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 20px; }
+        .modal-header h2 { margin: 0; font-size: 20px; color: var(--text-main); display: flex; align-items: center; gap: 10px; }
+        .close-btn { font-size: 28px; cursor: pointer; color: #999; border: none; background: none; line-height: 1; }
+        .close-btn:hover { color: var(--accent-red); }
+
+        /* 打印样式优化，点击打印时不显示网页其他乱七八糟的东西 */
+        @media print {
+            body * { visibility: hidden; }
+            #prepModal, #prepModal * { visibility: visible; }
+            #prepModal { position: absolute; left: 0; top: 0; width: 100%; display: block; background: white; padding: 0; }
+            .modal-content { box-shadow: none; border: none; width: 100%; padding: 0; }
+            .close-btn, .btn-primary { display: none !important; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>智慧餐厅运营监控大屏</h1>
 
-        <!-- 餐厅精选菜品 -->
-        <section class="dishes-section">
-            <h2>餐厅精选菜品</h2>
-            <div class="dishes-grid">
-                {% for dish in dishes %}
-                    <div class="dish-card">
-                        <h3>{{ dish.name }}</h3>
-                        <p class="category">{{ dish.category }}</p>
-                        <p class="price">¥{{ dish.price }}</p>
+    <div class="app-wrapper">
+        
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span class="icon">🍽️</span> 智慧餐厅
+            </div>
+            
+            <nav class="sidebar-menu">
+                <a href="{% url 'dashboard' %}" class="menu-item active">
+                    <span class="icon">📊</span> 运营监控大屏
+                </a>
+                <a href="{% url 'order_list' %}" class="menu-item">
+                    <span class="icon">📋</span> 订单管理中心
+                </a>
+                <a href="{% url 'dish_list' %}" class="menu-item">
+                    <span class="icon">🍲</span> 我的菜品管理
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            
+            <div class="dashboard-container">
+                <div class="header">
+                    <h1>运营概览</h1>
+                    
+                    <div class="account-area">
+                        <div class="avatar">{{ request.user.username|make_list|first|upper|default:"店" }}</div>
+                        <div class="user-info">
+                            <span class="user-name">{{ request.user.username|default:"店长" }}</span>
+                            <span class="user-role">管理员</span>
+                        </div>
+                        <a href="{% url 'logout' %}" class="logout-btn">退出</a>
                     </div>
-                {% endfor %}
-            </div>
-        </section>
+                </div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <h2>{{ total_orders }}</h2>
-                <p>总订单数</p>
-            </div>
-            <div class="stat-card">
-                <h2>¥{{ total_amount|floatformat:2 }}</h2>
-                <p>总订单金额</p>
-            </div>
-        </div>
+                <div id="chart-error"></div>
 
-        <div class="charts">
-            <div class="chart">
-                <h3>最近30天每日订单量趋势</h3>
-                <div id="daily-orders-chart" style="width: 100%; height: 400px;"></div>
-            </div>
-            <div class="chart">
-                <h3>热销菜品TOP 5</h3>
-                <div id="top-dishes-chart" style="width: 100%; height: 400px;"></div>
-            </div>
-        </div>
+                <div class="stats">
+                    <div class="stat-card">
+                        <h2 class="cyan-text">{{ total_orders }}</h2>
+                        <p>历史总订单数 (单)</p>
+                    </div>
+                    <div class="stat-card">
+                        <h2 class="green-text">¥ {{ total_amount|floatformat:2 }}</h2>
+                        <p>历史总营业额 (元)</p>
+                    </div>
+                    <div class="stat-card">
+                        <h2 class="orange-text">¥ {{ avg_order_value|floatformat:2 }}</h2>
+                        <p>平均客单价 (元)</p>
+                    </div>
+                </div>
 
-        <div class="chart" style="width: 100%; margin-top: 30px;">
-            <h3>未来7天订单量预测</h3>
-            {% if mape %}
-                <p style="text-align: center; font-size: 14px; color: #666;">预测准确度 (MAPE): {{ mape }}%</p>
-            {% endif %}
-            <div id="predicted-orders-chart" style="width: 100%; height: 400px;"></div>
-            {% if predictedData %}
-                <table style="width: 100%; margin-top: 20px; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background-color: #f5f5f5;">
-                            <th style="border: 1px solid #ddd; padding: 8px;">日期</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">预测订单量</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in predicted_orders %}
-                            <tr>
-                                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{{ item.date }}</td>
-                                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{{ item.predicted }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% endif %}
-        </div>
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h3>最近30天订单走势</h3>
+                        <div id="daily-orders-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>24小时客流热力分布</h3>
+                        <div id="hourly-orders-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>热销菜品金榜 TOP 5</h3>
+                        <div id="top-dishes-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>滞销菜品预警 BOTTOM 5</h3>
+                        <div id="bottom-dishes-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
+                </div>
+
+                <div class="chart-container ai-card" style="margin-bottom: 20px;">
+                    <div class="ai-title"><span style="font-size: 22px; margin-right: 8px;">💡</span> AI 智能营销建议</div>
+                    <div class="ai-text">{{ ai_suggestion }}</div>
+                </div>
+
+                <div class="chart-container" style="margin-bottom: 40px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
+                        <h3 style="margin: 0; display: flex; align-items: center; border: none; padding-left: 0;">
+                            AI 未来 7 天订单量预测 
+                            {% if mape %}
+                            <span style="font-size: 13px; color: var(--text-sub); font-weight: normal; margin-left: 15px; background: #f4f7f6; padding: 4px 10px; border-radius: 4px;">
+                                模型误差率 MAPE: <span style="color: var(--accent-green); font-weight: bold;">{{ mape }}%</span>
+                            </span>
+                            {% endif %}
+                        </h3>
+                        <button onclick="document.getElementById('prepModal').style.display='flex'" class="btn-primary" style="background: var(--accent-green);">🛒 生成明日精准采购单</button>
+                    </div>
+                    
+                    <div id="predicted-orders-chart" style="width: 100%; height: 350px;"></div>
+                    
+                    {% if predicted_orders %}
+                        <table class="prediction-table">
+                            <thead>
+                                <tr>
+                                    <th>预测日期</th>
+                                    <th>AI 建议备货总订单数 (单)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in predicted_orders %}
+                                    <tr>
+                                        <td style="color: var(--text-sub);">{{ item.date }}</td>
+                                        <td style="font-size: 16px; font-weight: bold; color: var(--accent-blue);">{{ item.predicted }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% endif %}
+                </div>
+
+                <div id="prepModal" class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>🛒 明日后厨精准备货清单</h2>
+                            <button class="close-btn" onclick="document.getElementById('prepModal').style.display='none'">&times;</button>
+                        </div>
+                        <p style="color: var(--text-sub); margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+                            此清单基于线性回归预测的明日总单量，并结合近 30 天各菜品销售比重由 AI 智能拆解得出。
+                        </p>
+                        <table class="prediction-table" style="margin-top: 0;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left;">菜品名称</th>
+                                    <th>分类</th>
+                                    <th style="text-align: right;">AI 建议备货份数</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in prep_list %}
+                                <tr>
+                                    <td style="font-weight: 500; text-align: left;">{{ item.name }}</td>
+                                    <td><span style="background: #f0f2f5; padding: 4px 10px; border-radius: 4px; font-size: 12px; color: #555;">{{ item.category }}</span></td>
+                                    <td style="font-weight: bold; color: var(--accent-red); font-size: 16px; text-align: right;">{{ item.quantity }} 份</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <div style="text-align: right; margin-top: 25px;">
+                            <button class="btn-primary" onclick="window.print()">🖨️ 打印清单给后厨</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
     </div>
 
+    {{ daily_orders|json_script:"daily-orders-data" }}
+    {{ top_dishes|json_script:"top-dishes-data" }}
+    {{ bottom_dishes|json_script:"bottom-dishes-data" }}
+    {{ hourly_orders|json_script:"hourly-orders-data" }}
+    {{ predicted_orders|json_script:"predicted-orders-data" }}
+
     <script>
-        // 准备数据
-        var dailyOrdersData = {{ daily_orders|safe }};
-        var topDishesData = {{ top_dishes|safe }};
-        var predictedData = {{ predicted_orders|safe }};
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                var dailyOrdersData = JSON.parse(document.getElementById('daily-orders-data').textContent);
+                var topDishesData = JSON.parse(document.getElementById('top-dishes-data').textContent);
+                var bottomDishesData = JSON.parse(document.getElementById('bottom-dishes-data').textContent);
+                var hourlyData = JSON.parse(document.getElementById('hourly-orders-data').textContent);
+                var predictedData = JSON.parse(document.getElementById('predicted-orders-data').textContent);
 
-        // 每日订单量折线图
-        if (dailyOrdersData.length === 0) {
-            document.getElementById('daily-orders-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var dailyChart = echarts.init(document.getElementById('daily-orders-chart'));
-            var dailyOption = {
-                title: {
-                    text: '每日订单量'
-                },
-                tooltip: {
-                    trigger: 'axis'
-                },
-                xAxis: {
-                    type: 'category',
-                    data: dailyOrdersData.map(item => item.date)
-                },
-                yAxis: {
-                    type: 'value'
-                },
-                series: [{
-                    data: dailyOrdersData.map(item => item.count),
-                    type: 'line',
-                    smooth: true
-                }]
-            };
-            dailyChart.setOption(dailyOption);
-        }
+                var errEl = document.getElementById('chart-error');
+                if (typeof echarts === 'undefined') {
+                    if (errEl) errEl.textContent = "图表引擎加载失败，请检查网络或刷新页面。";
+                    return;
+                }
 
-        // 热销菜品饼图
-        if (topDishesData.length === 0) {
-            document.getElementById('top-dishes-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var topDishesChart = echarts.init(document.getElementById('top-dishes-chart'));
-            var topDishesOption = {
-                title: {
-                    text: '热销菜品TOP 5'
-                },
-                tooltip: {
-                    trigger: 'item',
-                    formatter: '{a} <br/>{b}: {c} ({d}%)'
-                },
-                series: [{
-                    name: '销量',
-                    type: 'pie',
-                    data: topDishesData.map(item => ({
-                        name: item.dish__name,
-                        value: item.total_quantity
-                    })),
-                    emphasis: {
-                        itemStyle: {
-                            shadowBlur: 10,
-                            shadowOffsetX: 0,
-                            shadowColor: 'rgba(0, 0, 0, 0.5)'
-                        }
-                    }
-                }]
-            };
-            topDishesChart.setOption(topDishesOption);
-        }
+                const chartOptions = { renderer: 'canvas' };
+                const theme = null; 
+                const lineStyleColor = '#eeeeee';
+                const labelColor = '#666666';
 
-        // 未来7天订单量预测柱状图
-        if (predictedData.length === 0) {
-            document.getElementById('predicted-orders-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var predictedChart = echarts.init(document.getElementById('predicted-orders-chart'));
-            var predictedOption = {
-                title: {
-                    text: '未来7天订单量预测'
-                },
-                tooltip: {
-                    trigger: 'axis'
-                },
-                xAxis: {
-                    type: 'category',
-                    data: predictedData.map(item => item.date)
-                },
-                yAxis: {
-                    type: 'value'
-                },
-                series: [{
-                    data: predictedData.map(item => item.predicted),
-                    type: 'bar',
-                    itemStyle: {
-                        color: '#91cc75'
-                    }
-                }]
-            };
-            predictedChart.setOption(predictedOption);
-        }
+                // --- 每日订单量折线图 ---
+                var dailyChartDiv = document.getElementById('daily-orders-chart');
+                if (dailyOrdersData && dailyOrdersData.length > 0) {
+                    var dailyChart = echarts.init(dailyChartDiv, theme, chartOptions);
+                    dailyChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+                        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                        xAxis: { type: 'category', data: dailyOrdersData.map(item => item.date), axisLabel: { color: labelColor } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        series: [{ 
+                            data: dailyOrdersData.map(item => item.count), type: 'line', smooth: true, showSymbol: false,
+                            lineStyle: { width: 3, color: '#1890ff' }, 
+                            areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(24, 144, 255, 0.3)' }, { offset: 1, color: 'rgba(24, 144, 255, 0.02)' }]) }
+                        }]
+                    });
+                }
+
+                // --- 24小时客流热力分布 ---
+                var hourlyChartDiv = document.getElementById('hourly-orders-chart');
+                if (hourlyData && hourlyData.length > 0) {
+                    var hourlyChart = echarts.init(hourlyChartDiv, theme, chartOptions);
+                    hourlyChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis', formatter: '{b} <br/>客流热度: {c}' },
+                        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                        xAxis: { type: 'category', boundaryGap: false, data: hourlyData.map(item => item.hour), axisLabel: { color: labelColor } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        series: [{
+                            data: hourlyData.map(item => item.count), type: 'line', smooth: true, showSymbol: false,
+                            lineStyle: { width: 3, color: '#722ed1' },
+                            areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(114, 46, 209, 0.3)' }, { offset: 1, color: 'rgba(114, 46, 209, 0.02)' }]) }
+                        }]
+                    });
+                }
+
+                // --- 热销菜品饼图 ---
+                var topDishesChartDiv = document.getElementById('top-dishes-chart');
+                if (topDishesData && topDishesData.length > 0) {
+                    var topDishesChart = echarts.init(topDishesChartDiv, theme, chartOptions);
+                    topDishesChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'item', formatter: '{b}: {c}单 ({d}%)' },
+                        legend: { orient: 'vertical', left: 'left', textStyle: { color: labelColor } },
+                        color: ['#1890ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1'], 
+                        series: [{
+                            name: '销量', type: 'pie', radius: ['45%', '70%'], avoidLabelOverlap: false,
+                            itemStyle: { borderRadius: 8, borderColor: '#ffffff', borderWidth: 3 },
+                            label: { show: false, position: 'center' },
+                            emphasis: { label: { show: true, fontSize: 20, fontWeight: 'bold', color: '#333' } },
+                            data: topDishesData.map(item => ({ name: item.dish__name, value: item.total_quantity }))
+                        }]
+                    });
+                }
+
+                // --- 滞销菜品柱状图 ---
+                var bottomDishesChartDiv = document.getElementById('bottom-dishes-chart');
+                if (bottomDishesData && bottomDishesData.length > 0) {
+                    var bottomDishesChart = echarts.init(bottomDishesChartDiv, theme, chartOptions);
+                    bottomDishesChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                        grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+                        xAxis: { type: 'category', data: bottomDishesData.map(item => item.dish__name), axisLabel: { interval: 0, rotate: 30, color: labelColor } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        series: [{ 
+                            data: bottomDishesData.map(item => item.total_quantity), type: 'bar', barWidth: '40%',
+                            itemStyle: { 
+                                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#ff7875' }, { offset: 1, color: '#ff4d4f' }]),
+                                borderRadius: [4, 4, 0, 0]
+                            } 
+                        }]
+                    });
+                }
+
+                // --- 预测数据柱状图 ---
+                var predictedChartDiv = document.getElementById('predicted-orders-chart');
+                if (predictedData && predictedData.length > 0) {
+                    var predictedChart = echarts.init(predictedChartDiv, theme, chartOptions);
+                    predictedChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                        xAxis: { type: 'category', data: predictedData.map(item => item.date), axisLabel: { color: labelColor } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        series: [{ 
+                            data: predictedData.map(item => item.predicted), type: 'bar', barWidth: '35%',
+                            itemStyle: { 
+                                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#73d13d' }, { offset: 1, color: '#52c41a' }]),
+                                borderRadius: [6, 6, 0, 0]
+                            },
+                            label: { show: true, position: 'top', color: '#52c41a', fontWeight: 'bold' }
+                        }]
+                    });
+                }
+
+                window.addEventListener('resize', function() {
+                    if(dailyChart) dailyChart.resize();
+                    if(hourlyChart) hourlyChart.resize();
+                    if(topDishesChart) topDishesChart.resize();
+                    if(bottomDishesChart) bottomDishesChart.resize();
+                    if(predictedChart) predictedChart.resize();
+                });
+
+            } catch (e) {
+                console.error("执行脚本时发生错误：", e);
+            }
+        });
     </script>
 </body>
 </html>

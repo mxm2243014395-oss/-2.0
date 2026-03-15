@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 智慧餐厅管理系统</title>
+    <style>
+        :root {
+            --bg-light: #f8fafc;      /* 页面浅灰背景 */
+            --card-bg: #ffffff;       /* 卡片纯白背景 */
+            --text-main: #1e293b;     /* 深色主标题 */
+            --text-sub: #64748b;      /* 浅灰副标题 */
+            --accent-blue: #2563eb;   /* 商务蓝 */
+            --accent-blue-hover: #1d4ed8; /* 按钮悬停深蓝 */
+            --border-color: #e2e8f0;  /* 极浅的边框色 */
+            --focus-ring: rgba(37, 99, 235, 0.15); /* 输入框聚焦光环 */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            /* 增加一点极其微弱的背景纹理，显得更高级 */
+            background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            /* 苹果风格的高级弥散阴影 */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        /* 顶部装饰亮条 */
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 5px;
+            background: var(--accent-blue);
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-placeholder {
+            width: 56px;
+            height: 56px;
+            background: #eff6ff;
+            color: var(--accent-blue);
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            border: 1px solid #bfdbfe;
+        }
+
+        .logo-area h1 {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .logo-area p {
+            color: var(--text-sub);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            color: var(--text-main);
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+        }
+
+        /* 核心交互：输入框聚焦时的淡蓝色光晕效果 (MacOS 风格) */
+        .form-control:focus {
+            background-color: var(--card-bg);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 4px var(--focus-ring);
+        }
+
+        .form-options {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            color: var(--text-sub);
+            cursor: pointer;
+        }
+
+        .checkbox-label input {
+            margin-right: 8px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        .forgot-link {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .forgot-link:hover {
+            color: var(--accent-blue-hover);
+            text-decoration: underline;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background-color: var(--accent-blue);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+        }
+
+        .btn-login:hover {
+            background-color: var(--accent-blue-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-login:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px -1px rgba(37, 99, 235, 0.2);
+        }
+
+        /* 如果需要处理 Django 的报错信息 */
+        .error-message {
+            color: var(--accent-red);
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 16px;
+            background: #ffe4e6;
+            padding: 10px;
+            border-radius: 8px;
+            display: none; /* 默认隐藏，配合后端控制显示 */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-container">
+        <div class="logo-area">
+            <div class="logo-placeholder">🍽️</div>
+            <h1>智慧餐厅管理系统</h1>
+            <p>欢迎回来，请登录您的工作账号</p>
+        </div>
+
+        {% if form.errors %}
+            <div class="error-message" style="display: block;">
+                账号或密码错误，请重新输入。
+            </div>
+        {% endif %}
+
+        <form action="" method="POST">
+            {% csrf_token %}
+            
+            {% if next %}
+                <input type="hidden" name="next" value="{{ next }}" />
+            {% endif %}
+            <div class="form-group">
+                <label for="username">员工账号</label>
+                <input type="text" id="username" name="username" class="form-control" placeholder="请输入您的账号/手机号" required autocomplete="username">
+            </div>
+
+            <div class="form-group">
+                <label for="password">登录密码</label>
+                <input type="password" id="password" name="password" class="form-control" placeholder="请输入您的密码" required autocomplete="current-password">
+            </div>
+
+            <div class="form-options">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="remember"> 记住我
+                </label>
+                <a href="#" class="forgot-link">忘记密码？</a>
+            </div>
+
+            <button type="submit" class="btn-login">登 录</button>
+        </form>
+    </div>
+
+</body>
+</html>
