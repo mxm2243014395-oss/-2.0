@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智慧餐厅运营监控大屏</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="{% static 'js/echarts.min.js' %}" onerror="this.onerror=null;this.src='https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js'"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -44,66 +45,12 @@
         .chart h3 {
             margin-top: 0;
         }
-        .dishes-section {
-            margin-bottom: 30px;
-        }
-        .dishes-section h2 {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #333;
-        }
-        .dishes-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-        }
-        .dish-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            padding: 20px;
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .dish-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-        }
-        .dish-card h3 {
-            margin: 0 0 10px 0;
-            color: #2c3e50;
-            font-size: 18px;
-        }
-        .dish-card .category {
-            color: #7f8c8d;
-            font-size: 14px;
-            margin: 5px 0;
-        }
-        .dish-card .price {
-            color: #e74c3c;
-            font-size: 16px;
-            font-weight: bold;
-            margin: 10px 0 0 0;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>智慧餐厅运营监控大屏</h1>
-
-        <!-- 餐厅精选菜品 -->
-        <section class="dishes-section">
-            <h2>餐厅精选菜品</h2>
-            <div class="dishes-grid">
-                {% for dish in dishes %}
-                    <div class="dish-card">
-                        <h3>{{ dish.name }}</h3>
-                        <p class="category">{{ dish.category }}</p>
-                        <p class="price">¥{{ dish.price }}</p>
-                    </div>
-                {% endfor %}
-            </div>
-        </section>
+        <div id="chart-error" style="color: #b71c1c; text-align: center; margin-bottom: 16px; font-weight: bold;">正在加载图表库，请稍候...</div>
 
         <div class="stats">
             <div class="stat-card">
@@ -127,13 +74,25 @@
             </div>
         </div>
 
+        <div class="charts" style="margin-top: 30px;">
+            <div class="chart">
+                <h3>滞销菜品预警榜 (Bottom 10)</h3>
+                <div id="bottom-dishes-chart" style="width: 100%; height: 400px;"></div>
+            </div>
+            <div class="chart">
+                <h3>24小时订单热力折线图</h3>
+                <div id="hourly-orders-chart" style="width: 100%; height: 400px;"></div>
+            </div>
+        </div>
+
         <div class="chart" style="width: 100%; margin-top: 30px;">
             <h3>未来7天订单量预测</h3>
             {% if mape %}
                 <p style="text-align: center; font-size: 14px; color: #666;">预测准确度 (MAPE): {{ mape }}%</p>
             {% endif %}
             <div id="predicted-orders-chart" style="width: 100%; height: 400px;"></div>
-            {% if predictedData %}
+            
+            {% if predicted_orders %}
                 <table style="width: 100%; margin-top: 20px; border-collapse: collapse;">
                     <thead>
                         <tr style="background-color: #f5f5f5;">
@@ -154,101 +113,141 @@
         </div>
     </div>
 
+    {{ daily_orders|json_script:"daily-orders-data" }}
+    {{ top_dishes|json_script:"top-dishes-data" }}
+    {{ bottom_dishes|json_script:"bottom-dishes-data" }}
+    {{ hourly_orders|json_script:"hourly-orders-data" }}
+    {{ predicted_orders|json_script:"predicted-orders-data" }}
+
     <script>
-        // 准备数据
-        var dailyOrdersData = {{ daily_orders|safe }};
-        var topDishesData = {{ top_dishes|safe }};
-        var predictedData = {{ predicted_orders|safe }};
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                // 1. 获取并解析数据
+                var dailyOrdersData = JSON.parse(document.getElementById('daily-orders-data').textContent);
+                var topDishesData = JSON.parse(document.getElementById('top-dishes-data').textContent);
+                var bottomDishesData = JSON.parse(document.getElementById('bottom-dishes-data').textContent);
+                var hourlyData = JSON.parse(document.getElementById('hourly-orders-data').textContent);
+                var predictedData = JSON.parse(document.getElementById('predicted-orders-data').textContent);
+                
+                console.log("成功获取每日订单数据:", dailyOrdersData);
+                console.log("成功获取热销菜品数据:", topDishesData);
+                console.log("成功获取滞销菜品数据:", bottomDishesData);
+                console.log("成功获取小时订单数据:", hourlyData);
+                console.log("成功获取预测数据:", predictedData);
 
-        // 每日订单量折线图
-        if (dailyOrdersData.length === 0) {
-            document.getElementById('daily-orders-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var dailyChart = echarts.init(document.getElementById('daily-orders-chart'));
-            var dailyOption = {
-                title: {
-                    text: '每日订单量'
-                },
-                tooltip: {
-                    trigger: 'axis'
-                },
-                xAxis: {
-                    type: 'category',
-                    data: dailyOrdersData.map(item => item.date)
-                },
-                yAxis: {
-                    type: 'value'
-                },
-                series: [{
-                    data: dailyOrdersData.map(item => item.count),
-                    type: 'line',
-                    smooth: true
-                }]
-            };
-            dailyChart.setOption(dailyOption);
-        }
+                // 2. 检查 echarts 是否成功加载
+                var errEl = document.getElementById('chart-error');
+                if (typeof echarts === 'undefined') {
+                    var err = "图表渲染失败：ECharts 库未加载！请检查网络或更换 CDN。";
+                    console.error(err);
+                    if (errEl) errEl.textContent = err;
+                    return;
+                } else {
+                    if (errEl) errEl.textContent = '';
+                }
 
-        // 热销菜品饼图
-        if (topDishesData.length === 0) {
-            document.getElementById('top-dishes-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var topDishesChart = echarts.init(document.getElementById('top-dishes-chart'));
-            var topDishesOption = {
-                title: {
-                    text: '热销菜品TOP 5'
-                },
-                tooltip: {
-                    trigger: 'item',
-                    formatter: '{a} <br/>{b}: {c} ({d}%)'
-                },
-                series: [{
-                    name: '销量',
-                    type: 'pie',
-                    data: topDishesData.map(item => ({
-                        name: item.dish__name,
-                        value: item.total_quantity
-                    })),
-                    emphasis: {
-                        itemStyle: {
-                            shadowBlur: 10,
-                            shadowOffsetX: 0,
-                            shadowColor: 'rgba(0, 0, 0, 0.5)'
-                        }
-                    }
-                }]
-            };
-            topDishesChart.setOption(topDishesOption);
-        }
+                // --- 每日订单量折线图 ---
+                var dailyChartDiv = document.getElementById('daily-orders-chart');
+                if (dailyOrdersData && dailyOrdersData.length > 0) {
+                    var dailyChart = echarts.init(dailyChartDiv);
+                    dailyChart.setOption({
+                        title: { text: '每日订单量' },
+                        tooltip: { trigger: 'axis' },
+                        xAxis: { type: 'category', data: dailyOrdersData.map(item => item.date) },
+                        yAxis: { type: 'value' },
+                        series: [{ data: dailyOrdersData.map(item => item.count), type: 'line', smooth: true }]
+                    });
+                } else {
+                    dailyChartDiv.innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
+                }
 
-        // 未来7天订单量预测柱状图
-        if (predictedData.length === 0) {
-            document.getElementById('predicted-orders-chart').innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
-        } else {
-            var predictedChart = echarts.init(document.getElementById('predicted-orders-chart'));
-            var predictedOption = {
-                title: {
-                    text: '未来7天订单量预测'
-                },
-                tooltip: {
-                    trigger: 'axis'
-                },
-                xAxis: {
-                    type: 'category',
-                    data: predictedData.map(item => item.date)
-                },
-                yAxis: {
-                    type: 'value'
-                },
-                series: [{
-                    data: predictedData.map(item => item.predicted),
-                    type: 'bar',
-                    itemStyle: {
-                        color: '#91cc75'
-                    }
-                }]
-            };
-            predictedChart.setOption(predictedOption);
-        }
+                // --- 热销菜品饼图 ---
+                var topDishesChartDiv = document.getElementById('top-dishes-chart');
+                if (topDishesData && topDishesData.length > 0) {
+                    var topDishesChart = echarts.init(topDishesChartDiv);
+                    topDishesChart.setOption({
+                        title: { text: '热销菜品TOP 5' },
+                        tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
+                        series: [{
+                            name: '销量', type: 'pie',
+                            data: topDishesData.map(item => ({ name: item.dish__name, value: item.total_quantity }))
+                        }]
+                    });
+                } else {
+                    topDishesChartDiv.innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
+                }
+
+                // --- 滞销菜品柱状图 ---
+                var bottomDishesChartDiv = document.getElementById('bottom-dishes-chart');
+                if (bottomDishesData && bottomDishesData.length > 0) {
+                    var bottomDishesChart = echarts.init(bottomDishesChartDiv);
+                    bottomDishesChart.setOption({
+                        title: { text: '滞销菜品预警榜 (Bottom 10)' },
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                        xAxis: { type: 'category', data: bottomDishesData.map(item => item.dish__name) },
+                        yAxis: { type: 'value' },
+                        series: [{
+                            data: bottomDishesData.map(item => item.total_quantity),
+                            type: 'bar',
+                            itemStyle: { color: '#ff6b6b' }
+                        }]
+                    });
+                } else {
+                    bottomDishesChartDiv.innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
+                }
+
+                // --- 24小时订单热力折线图 ---
+                var hourlyChartDiv = document.getElementById('hourly-orders-chart');
+                if (hourlyData && hourlyData.length > 0) {
+                    var hourlyChart = echarts.init(hourlyChartDiv);
+                    // 确保有24小时的数据，如果缺少某些小时，填充为0
+                    var hours = Array.from({length: 24}, (_, i) => i);
+                    var hourCounts = new Array(24).fill(0);
+                    hourlyData.forEach(item => {
+                        hourCounts[item.hour] = item.count;
+                    });
+                    hourlyChart.setOption({
+                        title: { text: '24小时订单热力折线图' },
+                        tooltip: { trigger: 'axis' },
+                        xAxis: { type: 'category', data: hours.map(h => h + '时') },
+                        yAxis: { type: 'value' },
+                        series: [{
+                            data: hourCounts,
+                            type: 'line',
+                            smooth: true,
+                            itemStyle: { color: '#ffa500' },
+                            areaStyle: { opacity: 0.3 }
+                        }]
+                    });
+                } else {
+                    hourlyChartDiv.innerHTML = '<p style="text-align: center; padding: 50px;">暂无数据</p>';
+                }
+
+                // --- 预测数据柱状图 ---
+                var predictedChartDiv = document.getElementById('predicted-orders-chart');
+                if (predictedData && predictedData.length > 0) {
+                    var predictedChart = echarts.init(predictedChartDiv);
+                    predictedChart.setOption({
+                        title: { text: '未来7天订单量预测' },
+                        tooltip: { trigger: 'axis' },
+                        xAxis: { type: 'category', data: predictedData.map(item => item.date) },
+                        yAxis: { type: 'value' },
+                        series: [{
+                            data: predictedData.map(item => item.predicted),
+                            type: 'bar',
+                            itemStyle: { color: '#91cc75' }
+                        }]
+                    });
+                } else {
+                    predictedChartDiv.innerHTML = '<p style="text-align: center; padding: 50px;">暂无预测数据</p>';
+                }
+
+            } catch (e) {
+                console.error("执行脚本时发生错误：", e);
+                var errEl = document.getElementById('chart-error');
+                if (errEl) errEl.textContent = "图表渲染异常：" + (e.message || e);
+            }
+        });
     </script>
 </body>
 </html>

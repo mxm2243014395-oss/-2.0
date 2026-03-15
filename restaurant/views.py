@@ -1,12 +1,15 @@
 from django.shortcuts import render
 from django.utils import timezone
 from datetime import timedelta
-from .models import Order, OrderItem, Dish
+from .models import Order, OrderItem
 from django.db.models import Sum, Count
-from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncDate, ExtractHour
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
+
+from sklearn.model_selection import cross_val_predict
+from sklearn.metrics import mean_absolute_percentage_error
 
 def _daily_aggregate(start_date, end_date):
     """
@@ -33,6 +36,16 @@ def dashboard(request):
         total_quantity=Sum('quantity')
     ).order_by('-total_quantity')[:5]
     top_dishes = list(top_dishes_qs)
+
+    # 滞销菜品Bottom 10
+    bottom_dishes_qs = OrderItem.objects.values('dish__name').annotate(
+        total_quantity=Sum('quantity')
+    ).order_by('total_quantity')[:10]
+    bottom_dishes = list(bottom_dishes_qs)
+
+    # 24小时订单热力图
+    hourly_orders_qs = Order.objects.annotate(hour=ExtractHour('order_time')).values('hour').annotate(count=Count('id')).order_by('hour')
+    hourly_orders = [{'hour': item['hour'], 'count': item['count']} for item in hourly_orders_qs]
 
     # 订单预测逻辑
     ninety_days_ago = timezone.now() - timedelta(days=90)
@@ -84,16 +97,14 @@ def dashboard(request):
             for i in range(7)
         ]
 
-    # 餐厅精选菜品
-    dishes = list(Dish.objects.all().values('name', 'category', 'price'))
-
     context = {
         'total_orders': total_orders,
         'total_amount': total_amount,
         'daily_orders': daily_orders,
         'top_dishes': top_dishes,
+        'bottom_dishes': bottom_dishes,
+        'hourly_orders': hourly_orders,
         'predicted_orders': predicted_orders,
         'mape': round(mape, 2) if mape is not None else None,
-        'dishes': dishes,
     }
     return render(request, 'dashboard.html', context)
