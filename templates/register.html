@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册账号 - 智慧餐厅管理系统</title>
+    <style>
+        :root {
+            --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #1e293b; 
+            --text-sub: #64748b; --accent-blue: #2563eb; --accent-blue-hover: #1d4ed8; 
+            --border-color: #e2e8f0; --focus-ring: rgba(37, 99, 235, 0.15);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+            background-color: var(--bg-light); color: var(--text-main);
+            display: flex; align-items: center; justify-content: center; min-height: 100vh;
+            background-image: radial-gradient(var(--border-color) 1px, transparent 1px); background-size: 24px 24px;
+        }
+        .login-container {
+            width: 100%; max-width: 450px; padding: 40px; background: var(--card-bg);
+            border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color); position: relative; margin: 40px 0;
+        }
+        .login-container::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: var(--accent-blue); border-top-left-radius: 16px; border-top-right-radius: 16px; }
+        .logo-area { text-align: center; margin-bottom: 25px; }
+        .logo-placeholder { width: 56px; height: 56px; background: #eff6ff; color: var(--accent-blue); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; margin-bottom: 16px; border: 1px solid #bfdbfe; }
+        .logo-area h1 { font-size: 24px; font-weight: 600; }
+        .logo-area p { color: var(--text-sub); font-size: 14px; margin-top: 8px; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-main); }
+        .form-control { width: 100%; padding: 12px 16px; font-size: 15px; background-color: var(--bg-light); border: 1px solid var(--border-color); border-radius: 10px; transition: all 0.2s ease; outline: none; }
+        .form-control:focus { background-color: var(--card-bg); border-color: var(--accent-blue); box-shadow: 0 0 0 4px var(--focus-ring); }
+        .btn-login { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; color: white; background-color: var(--accent-blue); border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s ease; margin-top: 10px; }
+        .btn-login:hover { background-color: var(--accent-blue-hover); transform: translateY(-1px); }
+        .forgot-link { color: var(--accent-blue); text-decoration: none; font-weight: 500; }
+        .forgot-link:hover { text-decoration: underline; }
+        .help-text { font-size: 12px; color: #94a3b8; margin-top: 4px; display: block; }
+        .error-text { color: #e11d48; font-size: 13px; margin-top: 4px; display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="login-container">
+        <div class="logo-area">
+            <div class="logo-placeholder">👋</div>
+            <h1>加入智慧餐厅</h1>
+            <p>请填写以下信息注册新员工账号</p>
+        </div>
+
+        <form method="POST">
+            {% csrf_token %}
+            
+            {% for field in form %}
+                <div class="form-group">
+                    <label>{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                        <span class="help-text">{{ field.help_text }}</span>
+                    {% endif %}
+                    {% for error in field.errors %}
+                        <span class="error-text">{{ error }}</span>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+
+            <button type="submit" class="btn-login">立即注册并登录</button>
+        </form>
+
+        <div style="text-align: center; margin-top: 25px; font-size: 14px; color: var(--text-sub);">
+            已经有账号了？ <a href="{% url 'login' %}" class="forgot-link">返回登录</a>
+        </div>
+    </div>
+
+</body>
+</html>

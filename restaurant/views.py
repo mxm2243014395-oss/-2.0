@@ -171,15 +171,48 @@ def dashboard(request):
     return render(request, 'dashboard.html', context)
 
 # =========================================================
-# 2. 订单管理中心：列表与分页
+# 2. 订单管理中心：列表、分页与多条件联合搜索
 # =========================================================
 @login_required
 def order_list(request):
+    # 1. 获取所有订单基础查询集
     orders = Order.objects.all().order_by('-order_time')
+    
+    # 2. 获取前端传来的搜索参数
+    start_date = request.GET.get('start_date', '')
+    end_date = request.GET.get('end_date', '')
+    dish_name = request.GET.get('dish_name', '')
+    min_price = request.GET.get('min_price', '')
+    max_price = request.GET.get('max_price', '')
+
+    # 3. 动态拼接筛选条件 (Django ORM 神器)
+    if start_date:
+        orders = orders.filter(order_time__date__gte=start_date) # 大于等于开始日期
+    if end_date:
+        orders = orders.filter(order_time__date__lte=end_date)   # 小于等于结束日期
+    if dish_name:
+        orders = orders.filter(item_name__icontains=dish_name)   # 菜名模糊包含查询
+    if min_price:
+        orders = orders.filter(total_amount__gte=min_price)      # 金额大于等于
+    if max_price:
+        orders = orders.filter(total_amount__lte=max_price)      # 金额小于等于
+
+    # 4. 设置分页器
     paginator = Paginator(orders, 15) 
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
-    return render(request, 'order_list.html', {'page_obj': page_obj})
+    
+    # 5. 组装查询字符串，传递给前端分页器，防止翻页时丢失搜索条件
+    query_params = request.GET.copy()
+    if 'page' in query_params:
+        del query_params['page']
+    query_string = query_params.urlencode()
+    
+    context = {
+        'page_obj': page_obj,
+        'query_string': query_string, # 将参数串传给页面
+    }
+    return render(request, 'order_list.html', context)
 
 # =========================================================
 # 3. 订单管理中心：安全删除接口
@@ -340,3 +373,85 @@ def register(request):
         form = CustomRegisterForm()
         
     return render(request, 'register.html', {'form': form})
+
+    # =========================================================
+# 14. 员工账号管理：列表展示
+# =========================================================
+@login_required
+def user_list(request):
+    # 获取所有用户，按注册时间倒序排列
+    users = User.objects.all().order_by('-date_joined')
+    paginator = Paginator(users, 15) 
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    return render(request, 'user_list.html', {'page_obj': page_obj})
+
+# =========================================================
+# 15. 员工账号管理：编辑表单 (分配权限、停用账号)
+# =========================================================
+class UserEditForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['username', 'is_superuser', 'is_active']
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control', 'required': 'required'}),
+            'is_superuser': forms.CheckboxInput(attrs={'style': 'width: 20px; height: 20px; cursor: pointer;'}),
+            'is_active': forms.CheckboxInput(attrs={'style': 'width: 20px; height: 20px; cursor: pointer;'}),
+        }
+        labels = {
+            'username': '员工登录账号',
+            'is_superuser': '授予店长权限 (可查看运营大屏及所有数据)',
+            'is_active': '允许登录 (取消勾选即为停用该员工账号)',
+        }
+
+    def __init__(self, *args, **kwargs):
+        # 🌟 核心防越权 1：提取视图层传进来的“当前登录用户 (current_user)”
+        self.current_user = kwargs.pop('current_user', None)
+        super().__init__(*args, **kwargs)
+        
+        # 🌟 核心防越权 2：如果当前登录的不是店长，强制锁死“店长权限”复选框！
+        if self.current_user and not self.current_user.is_superuser:
+            self.fields['is_superuser'].disabled = True
+            # 给普通员工一个温馨提示，防止他们觉得是系统卡了点不动
+            self.fields['is_superuser'].label = '授予店长权限 (⚠️ 权限不足：仅现任店长可勾选此项)'
+
+@login_required
+def user_edit(request, user_id):
+    edit_user = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        # 🌟 把当前发请求的人 (request.user) 塞进表单里做权限判断
+        form = UserEditForm(request.POST, instance=edit_user, current_user=request.user)
+        if form.is_valid():
+            form.save()
+            return redirect('user_list')
+    else:
+        # 🌟 GET 请求展示页面时，同样塞入当前用户
+        form = UserEditForm(instance=edit_user, current_user=request.user)
+        
+    return render(request, 'user_form.html', {'form': form, 'title': f'编辑员工权限: {edit_user.username}'})
+
+# =========================================================
+# 16. 员工账号管理：安全删除
+# =========================================================
+@login_required
+def user_delete(request, user_id):
+    delete_user = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        # 🌟 核心防越权 3：删除接口的终极拦截
+        if not request.user.is_superuser:
+            pass # 如果不是店长发起的删除请求，静默忽略，不执行删除
+        elif delete_user == request.user:
+            pass # 店长也不能把自己删了（否则系统就没店长了）
+        else:
+            delete_user.delete()
+            
+    return redirect('user_list')
+    delete_user = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        # 【核心安全逻辑】：绝对不允许当前登录的管理员把自己删掉
+        if delete_user == request.user:
+            # 实际开发中这里可以抛出提示，演示暂且跳过删除动作
+            pass
+        else:
+            delete_user.delete()
+    return redirect('user_list')

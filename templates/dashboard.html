@@ -151,6 +151,9 @@
                 <a href="{% url 'dish_list' %}" class="menu-item">
                     <span class="icon">🍲</span> 我的菜品管理
                 </a>
+                <a href="{% url 'user_list' %}" class="menu-item">
+                    <span class="icon">👥</span> 员工账号管理
+                </a>
             </nav>
         </aside>
 
@@ -253,7 +256,7 @@
                             <button class="close-btn" onclick="document.getElementById('prepModal').style.display='none'">&times;</button>
                         </div>
                         <p style="color: var(--text-sub); margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
-                            此清单基于线性回归预测的明日总单量，并结合近 30 天各菜品销售比重由 AI 智能拆解得出。
+                            此清单基于线性回归预测的明日总单量，并结合近 30 天各菜品销售比重拆解得出。
                         </p>
                         <table class="prediction-table" style="margin-top: 0;">
                             <thead>
@@ -273,9 +276,12 @@
                                 {% endfor %}
                             </tbody>
                         </table>
-                        <div style="text-align: right; margin-top: 25px;">
-                            <button class="btn-primary" onclick="window.print()">🖨️ 打印清单给后厨</button>
+                        
+                        <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px;">
+                            <button type="button" class="btn-primary" style="background-color: #f0f2f5; color: var(--text-main); border: 1px solid var(--border-color);" onclick="document.getElementById('prepModal').style.display='none'">🔙 返回大屏</button>
+                            <button type="button" class="btn-primary" onclick="window.print()">🖨️ 打印清单给后厨</button>
                         </div>
+                        
                     </div>
                 </div>
 

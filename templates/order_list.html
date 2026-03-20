@@ -37,29 +37,35 @@
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
         .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
 
-        /* ====== 新增：数据表格专属样式 ====== */
-        .table-card {
+        /* ====== 新增：搜索表单卡片样式 ====== */
+        .search-card {
             background: var(--card-bg);
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             border: 1px solid var(--border-color);
-            overflow: hidden;
+            padding: 20px;
+            margin-bottom: 20px;
         }
-
-        .table-toolbar {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .search-form { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; }
+        .search-group { display: flex; flex-direction: column; gap: 8px; }
+        .search-group label { font-size: 13px; font-weight: 600; color: var(--text-sub); }
+        .search-input {
+            padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; 
+            font-size: 14px; background: #fafafa; transition: all 0.2s; outline: none;
         }
-
-        .btn-primary {
-            background: var(--accent-blue); color: white; border: none; padding: 8px 16px;
-            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;
-        }
+        .search-input:focus { background: #fff; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.1); }
+        .input-row { display: flex; align-items: center; gap: 10px; }
+        
+        /* 按钮样式 */
+        .btn-primary { background: var(--accent-blue); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.2s; text-decoration: none; }
         .btn-primary:hover { opacity: 0.8; transform: translateY(-1px); }
+        .btn-reset { background: #f0f2f5; color: var(--text-main); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s; display: inline-block;}
+        .btn-reset:hover { background: #e4e6eb; }
 
+        /* ====== 数据表格专属样式 ====== */
+        .table-card { background: var(--card-bg); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid var(--border-color); overflow: hidden; }
+        .table-toolbar { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        
         .data-table { width: 100%; border-collapse: collapse; }
         .data-table th { background-color: #fafafa; padding: 14px 20px; text-align: left; font-weight: 600; color: var(--text-sub); border-bottom: 1px solid var(--border-color); }
         .data-table td { padding: 14px 20px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-size: 14px; }
@@ -74,10 +80,7 @@
         /* ====== 分页组件样式 ====== */
         .pagination { padding: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
         .page-info { color: var(--text-sub); font-size: 14px; margin-right: 10px; }
-        .page-btn {
-            padding: 6px 12px; border: 1px solid var(--border-color); background: var(--card-bg);
-            border-radius: 4px; color: var(--text-main); text-decoration: none; font-size: 13px;
-        }
+        .page-btn { padding: 6px 12px; border: 1px solid var(--border-color); background: var(--card-bg); border-radius: 4px; color: var(--text-main); text-decoration: none; font-size: 13px; }
         .page-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
         .page-btn.disabled { color: #ccc; border-color: var(--border-color); cursor: not-allowed; pointer-events: none; }
     </style>
@@ -96,13 +99,48 @@
                 <a href="{% url 'dish_list' %}" class="menu-item">
                     <span class="icon">🍲</span> 我的菜品管理
                 </a>
-                </nav>
+                <a href="{% url 'user_list' %}" class="menu-item">
+                    <span class="icon">👥</span> 员工账号管理
+                </a>
+            </nav>
         </aside>
 
         <main class="main-content">
             <div class="dashboard-container">
                 <div class="header">
                     <h1>订单管理中心</h1>
+                </div>
+
+                <div class="search-card">
+                    <form method="GET" action="{% url 'order_list' %}" class="search-form">
+                        <div class="search-group">
+                            <label>下单日期范围</label>
+                            <div class="input-row">
+                                <input type="date" name="start_date" value="{{ request.GET.start_date }}" class="search-input">
+                                <span style="color: #999;">至</span>
+                                <input type="date" name="end_date" value="{{ request.GET.end_date }}" class="search-input">
+                            </div>
+                        </div>
+
+                        <div class="search-group">
+                            <label>包含菜品名称</label>
+                            <input type="text" name="dish_name" value="{{ request.GET.dish_name }}" placeholder="例如：糖醋里脊" class="search-input" style="width: 200px;">
+                        </div>
+
+                        <div class="search-group">
+                            <label>订单金额区间</label>
+                            <div class="input-row">
+                                <input type="number" step="0.01" name="min_price" value="{{ request.GET.min_price }}" placeholder="最低 ¥" class="search-input" style="width: 100px;">
+                                <span style="color: #999;">-</span>
+                                <input type="number" step="0.01" name="max_price" value="{{ request.GET.max_price }}" placeholder="最高 ¥" class="search-input" style="width: 100px;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 12px; margin-left: auto;">
+                            <a href="{% url 'order_list' %}" class="btn-reset">清空条件</a>
+                            <button type="submit" class="btn-primary">🔍 组合搜索</button>
+                        </div>
+                    </form>
                 </div>
 
                 <div class="table-card">
@@ -138,7 +176,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 40px; color: #999;">暂无订单记录</td>
+                                <td colspan="5" style="text-align: center; padding: 60px; color: #999;">没有找到符合该条件的订单记录</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -148,16 +186,16 @@
                         <span class="page-info">第 {{ page_obj.number }} 页 / 共 {{ page_obj.paginator.num_pages }} 页</span>
                         
                         {% if page_obj.has_previous %}
-                            <a href="?page=1" class="page-btn">首页</a>
-                            <a href="?page={{ page_obj.previous_page_number }}" class="page-btn">上一页</a>
+                            <a href="?page=1{% if query_string %}&{{ query_string }}{% endif %}" class="page-btn">首页</a>
+                            <a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-btn">上一页</a>
                         {% else %}
                             <a href="#" class="page-btn disabled">首页</a>
                             <a href="#" class="page-btn disabled">上一页</a>
                         {% endif %}
 
                         {% if page_obj.has_next %}
-                            <a href="?page={{ page_obj.next_page_number }}" class="page-btn">下一页</a>
-                            <a href="?page={{ page_obj.paginator.num_pages }}" class="page-btn">末页</a>
+                            <a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-btn">下一页</a>
+                            <a href="?page={{ page_obj.paginator.num_pages }}{% if query_string %}&{{ query_string }}{% endif %}" class="page-btn">末页</a>
                         {% else %}
                             <a href="#" class="page-btn disabled">下一页</a>
                             <a href="#" class="page-btn disabled">末页</a>
