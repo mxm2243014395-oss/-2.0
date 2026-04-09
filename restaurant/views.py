@@ -3,7 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Order, OrderItem, Dish
 from django.db.models import Sum
-from django.core.paginator import Paginator  # 新增：导入分页器
+from django.core.paginator import Paginator  # 导入分页器
 import pandas as pd
 import numpy as np
 
@@ -31,7 +31,7 @@ from collections import Counter
 def dashboard(request):
     total_orders = Order.objects.count()
     total_amount = Order.objects.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-#计算平均客单价 (防除以0报错)
+    # 计算平均客单价 (防除以0报错)
     avg_order_value = total_amount / total_orders if total_orders > 0 else 0
 
     now = timezone.now()
@@ -98,6 +98,8 @@ def dashboard(request):
     predicted_orders = []
     mape = None
     tomorrow_predicted_orders = 0  # 记录明天的预测单量
+    predicted_revenue = 0          # 新增：记录明日预估营收
+    actual_vs_pred_data = []       # 新增：记录实际 vs 预测对比数据
     
     if pred_daily_dict:
         hist_data = [{'date': k, 'count': v} for k, v in pred_daily_dict.items()]
@@ -120,6 +122,18 @@ def dashboard(request):
 
         model.fit(X, y)
 
+        # ======== [新增] 1. 计算"实际 vs 预测"的历史对比曲线数据 ========
+        historical_fitted = model.predict(X)
+        for i, date_val in enumerate(df['date']):
+            # 为了图表好看，我们截取最近 14 天的数据进行对比展示
+            if i >= len(df) - 14:
+                actual_vs_pred_data.append({
+                    'date': date_val.strftime('%m-%d'),
+                    'actual': int(y.iloc[i]),
+                    'predicted': max(0, int(round(historical_fitted[i])))
+                })
+        # ================================================================
+
         future_dates = [local_now_naive + timedelta(days=i) for i in range(1, 8)]
         min_date = df['date'].min()
         
@@ -135,11 +149,17 @@ def dashboard(request):
         
         # 记录明日预测单数
         tomorrow_predicted_orders = predicted_orders[0]['predicted'] if predicted_orders else 0
+        
+        # ======== [新增] 2. 计算明日预估营收 ========
+        predicted_revenue = tomorrow_predicted_orders * avg_order_value
+        # ============================================
 
     # ---------------------------------------------------------
-    # 🌟 核心增量 2：明日备货清单智能拆解
+    # 🌟 核心增量 2：明日备货清单智能拆解与 Top 菜品预测
     # ---------------------------------------------------------
     prep_list = []
+    top_predicted_dishes = [] # 新增：用于单独展示的前10大菜品预测数据
+    
     if tomorrow_predicted_orders > 0 and recent_30_days_orders.exists():
         total_recent_items = sum([d['total_quantity'] for d in top_dishes_qs]) or 1
         avg_items_per_order = total_recent_items / recent_30_days_orders.count()
@@ -149,11 +169,17 @@ def dashboard(request):
             # 预测备货量 = 明日订单数 * 每单平均包含菜品数 * 该菜品的历史销售占比
             predicted_qty = int(round(tomorrow_predicted_orders * avg_items_per_order * ratio))
             if predicted_qty > 0:
-                prep_list.append({
+                prep_item = {
                     'name': dish['dish__name'],
                     'category': dish['dish__category'],
                     'quantity': predicted_qty
-                })
+                }
+                prep_list.append(prep_item)
+                
+                # ======== [新增] 3. 提取前 10 名菜品作为图表数据 ========
+                if len(top_predicted_dishes) < 10:
+                    top_predicted_dishes.append(prep_item)
+                # ========================================================
 
     context = {
         'total_orders': total_orders,
@@ -166,7 +192,12 @@ def dashboard(request):
         'mape': round(mape, 2) if mape is not None else None,
         'ai_suggestion': ai_suggestion, 
         'prep_list': prep_list,
-        'avg_order_value': avg_order_value,         
+        'avg_order_value': avg_order_value,
+        
+        # ==== 往下传递新增的变量 ====
+        'predicted_revenue': predicted_revenue,
+        'actual_vs_pred_data': actual_vs_pred_data,
+        'top_predicted_dishes': top_predicted_dishes,
     }
     return render(request, 'dashboard.html', context)
 
@@ -284,16 +315,21 @@ def order_edit(request, order_id):
 class DishForm(forms.ModelForm):
     class Meta:
         model = Dish
-        fields = ['name', 'category', 'price']
+        # 如果您在第一步增加了库存字段，记得在这里加上 'current_stock', 'safety_stock'
+        fields = ['name', 'category', 'price', 'current_stock', 'safety_stock']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'required': 'required', 'placeholder': '例如: 宫保鸡丁'}),
             'category': forms.TextInput(attrs={'class': 'form-control', 'required': 'required', 'placeholder': '例如: 主菜、饮品、主食'}),
             'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'required': 'required'}),
+            'current_stock': forms.NumberInput(attrs={'class': 'form-control', 'required': 'required'}),
+            'safety_stock': forms.NumberInput(attrs={'class': 'form-control', 'required': 'required'}),
         }
         labels = {
             'name': '菜品名称',
             'category': '所属分类',
             'price': '价格 (元)',
+            'current_stock': '当前库存 (份)',
+            'safety_stock': '安全库存阈值 (份)',
         }
 
 # =========================================================
@@ -374,7 +410,7 @@ def register(request):
         
     return render(request, 'register.html', {'form': form})
 
-    # =========================================================
+# =========================================================
 # 14. 员工账号管理：列表展示
 # =========================================================
 @login_required
@@ -445,13 +481,4 @@ def user_delete(request, user_id):
         else:
             delete_user.delete()
             
-    return redirect('user_list')
-    delete_user = get_object_or_404(User, id=user_id)
-    if request.method == 'POST':
-        # 【核心安全逻辑】：绝对不允许当前登录的管理员把自己删掉
-        if delete_user == request.user:
-            # 实际开发中这里可以抛出提示，演示暂且跳过删除动作
-            pass
-        else:
-            delete_user.delete()
     return redirect('user_list')

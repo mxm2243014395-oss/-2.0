@@ -31,7 +31,7 @@
             overflow: hidden; 
         }
 
-        /* ---------------- 【新增：整体左右分栏布局】 ---------------- */
+        /* ---------------- 【整体左右分栏布局】 ---------------- */
         .app-wrapper { display: flex; height: 100vh; width: 100vw; }
 
         /* ---------------- 【左侧导航侧边栏】 ---------------- */
@@ -122,7 +122,7 @@
         .close-btn { font-size: 28px; cursor: pointer; color: #999; border: none; background: none; line-height: 1; }
         .close-btn:hover { color: var(--accent-red); }
 
-        /* 打印样式优化，点击打印时不显示网页其他乱七八糟的东西 */
+        /* 打印样式优化 */
         @media print {
             body * { visibility: hidden; }
             #prepModal, #prepModal * { visibility: visible; }
@@ -188,6 +188,10 @@
                         <h2 class="orange-text">¥ {{ avg_order_value|floatformat:2 }}</h2>
                         <p>平均客单价 (元)</p>
                     </div>
+                    <div class="stat-card" style="border: 2px solid var(--accent-blue); background: #f0f7ff;">
+                        <h2 class="cyan-text" style="color: #1890ff;">¥ {{ predicted_revenue|floatformat:2 }}</h2>
+                        <p style="color: #1890ff; font-weight: bold;">✨ 明日预估营收 (元)</p>
+                    </div>
                 </div>
 
                 <div class="charts-grid">
@@ -212,6 +216,17 @@
                 <div class="chart-container ai-card" style="margin-bottom: 20px;">
                     <div class="ai-title"><span style="font-size: 22px; margin-right: 8px;">💡</span> AI 智能营销建议</div>
                     <div class="ai-text">{{ ai_suggestion }}</div>
+                </div>
+
+                <div class="charts-grid" style="margin-top: 24px;">
+                    <div class="chart-container">
+                        <h3>AI 预测效果复盘 (实际 vs 预测)</h3>
+                        <div id="actual-vs-pred-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>热门菜品明日销量预测 (Top 10)</h3>
+                        <div id="top-predicted-dishes-chart" style="width: 100%; height: 320px;"></div>
+                    </div>
                 </div>
 
                 <div class="chart-container" style="margin-bottom: 40px;">
@@ -294,15 +309,23 @@
     {{ bottom_dishes|json_script:"bottom-dishes-data" }}
     {{ hourly_orders|json_script:"hourly-orders-data" }}
     {{ predicted_orders|json_script:"predicted-orders-data" }}
+    
+    {{ actual_vs_pred_data|json_script:"actual-vs-pred-data" }}
+    {{ top_predicted_dishes|json_script:"top-predicted-dishes-data" }}
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             try {
+                // 获取常规图表数据
                 var dailyOrdersData = JSON.parse(document.getElementById('daily-orders-data').textContent);
                 var topDishesData = JSON.parse(document.getElementById('top-dishes-data').textContent);
                 var bottomDishesData = JSON.parse(document.getElementById('bottom-dishes-data').textContent);
                 var hourlyData = JSON.parse(document.getElementById('hourly-orders-data').textContent);
                 var predictedData = JSON.parse(document.getElementById('predicted-orders-data').textContent);
+                
+                // 获取新增图表数据
+                var actualVsPredData = JSON.parse(document.getElementById('actual-vs-pred-data').textContent || "[]");
+                var topPredictedDishesData = JSON.parse(document.getElementById('top-predicted-dishes-data').textContent || "[]");
 
                 var errEl = document.getElementById('chart-error');
                 if (typeof echarts === 'undefined') {
@@ -314,6 +337,8 @@
                 const theme = null; 
                 const lineStyleColor = '#eeeeee';
                 const labelColor = '#666666';
+
+                // ================= 常规图表渲染 =================
 
                 // --- 每日订单量折线图 ---
                 var dailyChartDiv = document.getElementById('daily-orders-chart');
@@ -390,7 +415,7 @@
                     });
                 }
 
-                // --- 预测数据柱状图 ---
+                // --- 预测数据柱状图 (未来 7 天总量) ---
                 var predictedChartDiv = document.getElementById('predicted-orders-chart');
                 if (predictedData && predictedData.length > 0) {
                     var predictedChart = echarts.init(predictedChartDiv, theme, chartOptions);
@@ -411,12 +436,72 @@
                     });
                 }
 
+                // ================= 新增图表渲染 =================
+
+                // --- 新增：实际 VS 预测双折线图 ---
+                var actualVsPredDiv = document.getElementById('actual-vs-pred-chart');
+                if (actualVsPredData && actualVsPredData.length > 0) {
+                    var actualVsPredChart = echarts.init(actualVsPredDiv, theme, chartOptions);
+                    actualVsPredChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['真实历史单量', '模型拟合预测'], bottom: 0, textStyle: { color: labelColor } },
+                        grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+                        xAxis: { type: 'category', data: actualVsPredData.map(item => item.date), axisLabel: { color: labelColor } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        series: [
+                            { 
+                                name: '真实历史单量', type: 'line', 
+                                data: actualVsPredData.map(item => item.actual), 
+                                lineStyle: { width: 3, color: '#1890ff' }, 
+                                itemStyle: { color: '#1890ff' },
+                                symbol: 'circle', symbolSize: 6
+                            },
+                            { 
+                                name: '模型拟合预测', type: 'line', 
+                                data: actualVsPredData.map(item => item.predicted), 
+                                lineStyle: { width: 3, color: '#faad14', type: 'dashed' }, 
+                                itemStyle: { color: '#faad14' },
+                                symbol: 'emptyCircle', symbolSize: 6
+                            }
+                        ]
+                    });
+                }
+
+                // --- 新增：热门菜品预测销量条形图 (Top 10) ---
+                var topPredictedDiv = document.getElementById('top-predicted-dishes-chart');
+                if (topPredictedDishesData && topPredictedDishesData.length > 0) {
+                    // 数据反转，让销量最大的在最上面显示
+                    var reversedData = [...topPredictedDishesData].reverse();
+                    
+                    var topPredictedChart = echarts.init(topPredictedDiv, theme, chartOptions);
+                    topPredictedChart.setOption({
+                        backgroundColor: 'transparent',
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: '{b}: 预计需备货 {c} 份' },
+                        grid: { left: '3%', right: '8%', bottom: '3%', containLabel: true },
+                        xAxis: { type: 'value', splitLine: { lineStyle: { color: lineStyleColor } }, axisLabel: { color: labelColor } },
+                        yAxis: { type: 'category', data: reversedData.map(item => item.name), axisLabel: { color: labelColor } },
+                        series: [{ 
+                            name: '预测份数', type: 'bar', 
+                            data: reversedData.map(item => item.quantity),
+                            itemStyle: { 
+                                color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#36cfc9' }, { offset: 1, color: '#5cdbd3' }]), 
+                                borderRadius: [0, 4, 4, 0] 
+                            },
+                            label: { show: true, position: 'right', color: '#13c2c2', fontWeight: 'bold' }
+                        }]
+                    });
+                }
+
+                // 监听窗口大小变化，使得所有图表自适应缩放
                 window.addEventListener('resize', function() {
                     if(dailyChart) dailyChart.resize();
                     if(hourlyChart) hourlyChart.resize();
                     if(topDishesChart) topDishesChart.resize();
                     if(bottomDishesChart) bottomDishesChart.resize();
                     if(predictedChart) predictedChart.resize();
+                    if(actualVsPredChart) actualVsPredChart.resize();
+                    if(topPredictedChart) topPredictedChart.resize();
                 });
 
             } catch (e) {

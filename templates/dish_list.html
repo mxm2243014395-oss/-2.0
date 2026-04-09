@@ -73,34 +73,30 @@
                                 <th>菜品名称</th>
                                 <th>分类</th>
                                 <th>价格 (元)</th>
-                                <th>操作</th>
+                               <th>当前库存</th> <th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for dish in page_obj %}
-                            <tr>
-                                <td style="font-weight: bold;">{{ dish.name }}</td>
-                                <td>
-                                    <span class="badge 
-                                        {% if '主菜' in dish.category %}badge-main
-                                        {% elif '饮' in dish.category or '酒' in dish.category %}badge-drink
-                                        {% elif '主食' in dish.category %}badge-staple
-                                        {% endif %}">
-                                        {{ dish.category }}
+                        <tr>
+                            <td style="font-weight: bold;">{{ dish.name }}</td>
+                            <td>...</td>
+                            <td style="color: var(--accent-green); font-weight: bold;">¥ {{ dish.price|floatformat:2 }}</td>
+                            
+                            <td>
+                                {% if dish.current_stock <= dish.safety_stock %}
+                                    <span style="color: #ff4d4f; font-weight: bold; display: flex; align-items: center; gap: 5px;">
+                                        ⚠️ {{ dish.current_stock }} 份 (库存告急)
                                     </span>
-                                </td>
-                                <td style="color: var(--accent-green); font-weight: bold;">¥ {{ dish.price|floatformat:2 }}</td>
-                                <td>
-                                    <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>
-                                    <form action="{% url 'dish_delete' dish.id %}" method="POST" style="display:inline;" onsubmit="return confirm('确定要下架并删除菜品【{{ dish.name }}】吗？');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="action-delete">删除</button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr><td colspan="4" style="text-align: center; padding: 40px; color: #999;">暂无菜品</td></tr>
-                            {% endfor %}
+                                {% else %}
+                                    <span style="color: #666;">{{ dish.current_stock }} 份</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>...
+                            </td>
+                        </tr>
+                        {% endfor %}
                         </tbody>
                     </table>
 

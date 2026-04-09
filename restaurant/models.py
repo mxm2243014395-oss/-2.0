@@ -5,6 +5,9 @@ class Dish(models.Model):
     category = models.CharField(max_length=50, verbose_name='分类')
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='单价')
 
+    current_stock = models.IntegerField(default=50, verbose_name='当前库存')
+    safety_stock = models.IntegerField(default=15, verbose_name='安全库存阈值')
+
     def __str__(self):
         return self.name
 
