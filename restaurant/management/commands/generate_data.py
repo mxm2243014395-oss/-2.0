@@ -4,6 +4,7 @@ from restaurant.models import Dish, Order, OrderItem
 import random
 from datetime import timedelta
 
+# 必须保留这个类定义，Django 才能识别这是一个命令
 class Command(BaseCommand):
     help = '生成极其逼真的餐厅运营测试数据（保证单品价格与总金额严格对齐）'
 
@@ -13,7 +14,7 @@ class Command(BaseCommand):
         Order.objects.all().delete()
         Dish.objects.all().delete()
 
-        # 解除 Django 强制将订单时间设为“当前时间”的限制
+        # 解除 Django 自动填充时间的限制，允许注入历史时间
         order_time_field = Order._meta.get_field('order_time')
         order_time_field.auto_now_add = False
         order_time_field.auto_now = False
@@ -43,12 +44,12 @@ class Command(BaseCommand):
         now = timezone.localtime(timezone.now())
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_to_generate)
         
-        orders = []
-        item_lists = []
+        all_items = []
         order_count = 0
 
         self.stdout.write("开始生成带有真实分布的订单数据...")
 
+        # 逐日生成订单，并逐笔保存以兼容 MySQL 5.7
         for day_index in range(days_to_generate):
             current_date = start_date + timedelta(days=day_index)
             is_weekend = current_date.weekday() >= 5
@@ -65,31 +66,23 @@ class Command(BaseCommand):
                     order_time=order_time,
                     total_amount=0
                 )
-                orders.append(order)
                 
                 items, total = self._generate_order_items(all_dishes, dish_weights, order)
-                order.total_amount = total
                 
+                order.total_amount = total
                 if items:
                     order.item_name = items[0].dish.name
                     order.item_price = items[0].dish.price
                     order.quantity = items[0].quantity
                 
-                item_lists.append(items)
+                # 显式调用 save() 确保 MySQL 生成 ID，解决 bulk_create 报错问题
+                order.save() 
+                
+                all_items.extend(items)
                 order_count += 1
 
-        # 批量写入数据库
+        # 批量创建订单明细
         batch_size = 1000
-        created_orders = []
-        for i in range(0, len(orders), batch_size):
-            created_orders.extend(Order.objects.bulk_create(orders[i:i+batch_size]))
-
-        all_items = []
-        for created_order, items in zip(created_orders, item_lists):
-            for item in items:
-                item.order = created_order
-            all_items.extend(items)
-
         for i in range(0, len(all_items), batch_size):
             OrderItem.objects.bulk_create(all_items[i:i+batch_size])
 
@@ -109,12 +102,8 @@ class Command(BaseCommand):
         return date.replace(hour=hour, minute=minute, second=random.randint(0, 59))
 
     def _generate_order_items(self, all_dishes, dish_weights, order):
-        """【核心修改区】：强制每笔订单只包含 1 种菜品，保证前台表格金额完美对齐"""
         items = []
-        
-        # 只随机抽取 1 种菜品
         chosen_dish = random.choices(all_dishes, weights=dish_weights, k=1)[0]
-        # 数量随机 1 到 4 份
         quantity = random.randint(1, 4)
         
         item = OrderItem(
@@ -123,8 +112,5 @@ class Command(BaseCommand):
             quantity=quantity
         )
         items.append(item)
-        
-        # 订单总价严格等于：单价 * 数量
         total = chosen_dish.price * quantity
-        
         return items, total

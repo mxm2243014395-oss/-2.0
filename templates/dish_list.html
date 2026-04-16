@@ -80,7 +80,17 @@
                             {% for dish in page_obj %}
                         <tr>
                             <td style="font-weight: bold;">{{ dish.name }}</td>
-                            <td>...</td>
+                            <td>
+                                {% if dish.category == '主菜' %}
+                                    <span class="badge badge-main">{{ dish.category }}</span>
+                                {% elif '饮' in dish.category %}
+                                    <span class="badge badge-drink">{{ dish.category }}</span>
+                                {% elif '主食' in dish.category %}
+                                    <span class="badge badge-staple">{{ dish.category }}</span>
+                                {% else %}
+                                    <span class="badge">{{ dish.category }}</span>
+                                {% endif %}
+                            </td>
                             <td style="color: var(--accent-green); font-weight: bold;">¥ {{ dish.price|floatformat:2 }}</td>
                             
                             <td>
@@ -93,7 +103,11 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>...
+                                <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>
+                                <form action="{% url 'dish_delete' dish.id %}" method="POST" style="display:inline;" onsubmit="return confirm('确定要永久删除菜品【{{ dish.name }}】吗？');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="action-delete" style="cursor: pointer; border: none; background: none; color: var(--accent-red); font-size: 13px; font-weight: 500;">删除</button>
+                                </form>
                             </td>
                         </tr>
                         {% endfor %}
