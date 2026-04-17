@@ -2,60 +2,37 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - 智慧餐厅</title>
     <style>
-        :root { --bg-light: #f4f7f6; --card-bg: #ffffff; --text-main: #333333; --accent-blue: #1890ff; --border-color: #ebeef5; --sidebar-width: 250px; }
-        body { font-family: -apple-system, Arial, sans-serif; margin: 0; background-color: var(--bg-light); color: var(--text-main); height: 100vh; overflow: hidden; display: flex;}
-        .sidebar { width: var(--sidebar-width); background: var(--card-bg); border-right: 1px solid var(--border-color); padding-top: 20px; }
-        .sidebar-menu a { display: block; padding: 15px 20px; color: #333; text-decoration: none; margin-bottom: 5px;}
-        .sidebar-menu a.active { background: #e6f7ff; color: var(--accent-blue); font-weight: bold; border-right: 4px solid var(--accent-blue);}
-        .main-content { flex: 1; padding: 40px; overflow-y: auto; }
-        .form-card { background: var(--card-bg); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid var(--border-color); padding: 40px; max-width: 600px; }
-        .form-group { margin-bottom: 25px; }
-        .form-group label { display: block; font-size: 15px; font-weight: bold; margin-bottom: 10px; }
-        .form-control { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; background: #fafafa;}
-        .checkbox-row { display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);}
-        .checkbox-row label { margin-bottom: 0; cursor: pointer; font-weight: 500;}
-        .btn-submit { background: var(--accent-blue); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; }
-        .btn-cancel { background: #f0f2f5; color: #333; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; margin-right: 15px;}
+        :root{--bg:#F5F5F7;--card:#fff;--text:#1D1D1F;--sub:#6E6E73;--line:rgba(0,0,0,.06);--shadow:0 4px 6px -1px rgba(0,0,0,.05)}
+        *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100vh;display:flex}.sidebar{width:250px;flex-shrink:0;padding:18px 14px}.shell{height:calc(100vh - 36px);background:rgba(255,255,255,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.7);border-radius:24px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}.logo{height:76px;display:flex;align-items:center;padding:0 22px;font-size:18px;font-weight:700;letter-spacing:-.02em;border-bottom:1px solid var(--line)}.menu{padding:14px 10px;display:flex;flex-direction:column;gap:8px}.item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;color:var(--text);text-decoration:none;transition:.18s ease}.item:hover,.item.active{background:rgba(0,0,0,.05);transform:translateX(2px)}.main{flex:1;padding:24px 28px 28px 0;overflow-y:auto}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding:8px 4px 14px}.head h1{margin:0;font-size:30px;letter-spacing:-.03em;font-weight:700}.card{background:#fff;border-radius:22px;box-shadow:var(--shadow);max-width:760px;overflow:hidden}.body{padding:24px}.field{margin-bottom:18px}.field label{display:block;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--sub)}.field input,.field textarea,.field select{width:100%;border:1px solid rgba(0,0,0,.08);border-radius:14px;background:#fafafa;padding:12px 14px;font-size:15px;outline:none;transition:.15s ease}.field input:focus,.field textarea:focus,.field select:focus{border-color:rgba(0,0,0,.22);background:#fff;box-shadow:0 0 0 4px rgba(0,0,0,.04)}.checkbox{display:flex;align-items:center;gap:10px;background:#f8fafc;padding:14px;border-radius:14px;border:1px solid rgba(0,0,0,.06)}.actions{display:flex;justify-content:flex-end;gap:12px;margin-top:22px}.btn-save{background:#000;color:#fff;border:none;border-radius:999px;padding:12px 18px;font-weight:600}.btn-save:hover{color:#fff;opacity:.94}.btn-cancel{background:#f2f2f7;color:#1D1D1F;border:none;border-radius:999px;padding:12px 18px;font-weight:600;text-decoration:none}.btn-cancel:hover{background:#e9e9ee;color:#000}
     </style>
 </head>
 <body>
     <aside class="sidebar">
-        <h2 style="padding: 0 20px; color: var(--accent-blue); margin-bottom: 30px;">🍽️ 智慧餐厅</h2>
-        <div class="sidebar-menu">
-            <a href="{% url 'dashboard' %}">📊 运营监控大屏</a>
-            <a href="{% url 'order_list' %}">📋 订单管理中心</a>
-            <a href="{% url 'dish_list' %}">🍲 我的菜品管理</a>
-            <a href="{% url 'user_list' %}" class="active">👥 员工账号管理</a>
+        <div class="shell">
+            <div class="logo">🍽️ 智慧餐厅</div>
+            <nav class="menu">
+                <a href="{% url 'dashboard' %}" class="item"><span>📊</span> 运营大屏</a>
+                <a href="{% url 'order_list' %}" class="item"><span>📋</span> 订单管理</a>
+                <a href="{% url 'dish_list' %}" class="item"><span>🍲</span> 菜品管理</a>
+                <a href="{% url 'user_list' %}" class="item active"><span>👥</span> 员工账号</a>
+            </nav>
         </div>
     </aside>
-
-    <main class="main-content">
-        <h1 style="margin-top: 0; margin-bottom: 30px;">{{ title }}</h1>
-        <div class="form-card">
-            <form method="POST">
-                {% csrf_token %}
-                <div class="form-group">
-                    <label>{{ form.username.label }}</label>
-                    {{ form.username }}
-                </div>
-                
-                <div class="form-group checkbox-row">
-                    {{ form.is_superuser }}
-                    <label for="{{ form.is_superuser.id_for_label }}">👑 {{ form.is_superuser.label }}</label>
-                </div>
-
-                <div class="form-group checkbox-row">
-                    {{ form.is_active }}
-                    <label for="{{ form.is_active.id_for_label }}">✅ {{ form.is_active.label }}</label>
-                </div>
-
-                <div style="margin-top: 40px; text-align: right;">
-                    <a href="{% url 'user_list' %}" class="btn-cancel">取消返回</a>
-                    <button type="submit" class="btn-submit">保存权限设置</button>
-                </div>
-            </form>
+    <main class="main">
+        <div class="head"><h1>{{ title }}</h1></div>
+        <div class="card">
+            <div class="body">
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="field"><label>{{ form.username.label }}</label>{{ form.username }}</div>
+                    <div class="field checkbox">{{ form.is_superuser }}<label for="{{ form.is_superuser.id_for_label }}">👑 {{ form.is_superuser.label }}</label></div>
+                    <div class="field checkbox">{{ form.is_active }}<label for="{{ form.is_active.id_for_label }}">✅ {{ form.is_active.label }}</label></div>
+                    <div class="actions"><a href="{% url 'user_list' %}" class="btn-cancel">取消返回</a><button type="submit" class="btn-save">保存权限设置</button></div>
+                </form>
+            </div>
         </div>
     </main>
 </body>

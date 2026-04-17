@@ -62,6 +62,17 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'smart-restaurant-cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        },
+    }
+}
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -90,3 +101,4 @@ LOGOUT_REDIRECT_URL = '/'
 
 # 告诉 Django：如果有未登录的访客想强行访问内部网页，全部踢回首页（登录页）
 LOGIN_URL = '/'
+

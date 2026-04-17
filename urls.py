@@ -15,6 +15,7 @@ urlpatterns = [
     
     # 大屏
     path('dashboard/', views.dashboard, name='dashboard'), 
+    path('api/dashboard-data/', views.dashboard_data_api, name='dashboard_data_api'),
     
     # ======== 订单管理中心 ========
     path('orders/', views.order_list, name='order_list'),

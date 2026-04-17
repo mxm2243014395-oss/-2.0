@@ -1,139 +1,378 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.utils import timezone
-from datetime import timedelta
-from .models import Order, Dish
-from django.db.models import Sum
-from django.core.paginator import Paginator  # 导入分页器
-import pandas as pd
-import numpy as np
-
-# 导入机器学习库
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_predict
-from sklearn.metrics import mean_absolute_percentage_error
-
-# 导入认证与注册相关的库
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth import login as auth_login
-from django.contrib.auth.models import User
+from collections import defaultdict
+from datetime import datetime, time as dt_time, timedelta
+from decimal import Decimal
+import time
+import traceback
 
 from django import forms
-import time
+from django.contrib.auth import login as auth_login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.core.paginator import Paginator
+from django.db.models import Count, Sum
+from django.db.models.functions import ExtractHour, TruncDate
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.timezone import make_aware
 
-from itertools import combinations
-from collections import Counter
+from .models import Dish, Order
 
-# =========================================================
-# 1. 运营监控大屏视图
-#    保留函数，但暂时不执行 OrderItem / Dish 相关逻辑
-# =========================================================
+
+def _parse_month_param(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value.strip(), '%Y-%m')
+    except ValueError:
+        return None
+
+
+def _parse_day_param(value):
+    if not value:
+        return None
+    normalized = value.strip().replace('/', '-')
+    for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(normalized.split(' ')[0], '%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _aware_start_of_day(dt_value):
+    if timezone.is_naive(dt_value):
+        return make_aware(datetime.combine(dt_value.date(), dt_time.min))
+    return dt_value.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _aware_end_of_day(dt_value):
+    if timezone.is_naive(dt_value):
+        return make_aware(datetime.combine(dt_value.date(), dt_time.max))
+    return dt_value.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
+def _cache_count(queryset, cache_key):
+    total_count = cache.get(cache_key)
+    if total_count is None:
+        total_count = queryset.count()
+        cache.set(cache_key, total_count, 300)
+    return total_count
+
+
+def _query_signature(params_dict):
+    items = sorted((k, v) for k, v in params_dict.items() if v not in ('', None))
+    return '&'.join(f'{k}={v}' for k, v in items)
+
+
 @login_required
 def dashboard(request):
     total_orders = Order.objects.count()
-    total_amount = Order.objects.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
+    total_amount = Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0
+    total_amount_wan = total_amount / 10000 if total_amount else 0
     avg_order_value = total_amount / total_orders if total_orders > 0 else 0
 
-    now = timezone.now()
-    local_now = timezone.localtime(now)
-    local_now_naive = local_now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-    
-    thirty_days_ago = now - timedelta(days=30)
-    recent_30_days_orders = Order.objects.filter(order_time__gte=thirty_days_ago)
+    month_param = request.GET.get('month')
+    day_param = request.GET.get('day')
+    trend_start, trend_end, heatmap_day, _ = _dashboard_range_from_params(month_param, day_param)
 
-    daily_dict = {}
-    hourly_dict = {}
+    if trend_start is None or trend_end is None:
+        now = timezone.now()
+        trend_start = now - timedelta(days=29)
+        trend_end = now
+        heatmap_day = now
 
-    for order in recent_30_days_orders:
-        local_time = timezone.localtime(order.order_time)
-        date_str = local_time.strftime('%Y-%m-%d')
-        daily_dict[date_str] = daily_dict.get(date_str, 0) + 1
-        hour = local_time.hour
-        hourly_dict[hour] = hourly_dict.get(hour, 0) + 1
-
+    daily_rows = (
+        Order.objects.filter(order_time__gte=trend_start, order_time__lte=trend_end)
+        .annotate(order_day=TruncDate('order_time'))
+        .values('order_day')
+        .annotate(count=Count('id'))
+        .order_by('order_day')
+    )
+    daily_map = {row['order_day']: row['count'] for row in daily_rows}
     daily_orders = []
-    for i in range(30, 0, -1):
-        d = (local_now_naive - timedelta(days=i)).strftime('%Y-%m-%d')
-        daily_orders.append({'date': d, 'count': daily_dict.get(d, 0)})
+    current_date = timezone.localtime(trend_start).date()
+    end_date = timezone.localtime(trend_end).date()
+    while current_date <= end_date:
+        daily_orders.append({'date': current_date.strftime('%Y-%m-%d'), 'count': daily_map.get(current_date, 0)})
+        current_date += timedelta(days=1)
 
-    hourly_orders = [{'hour': f'{h:02d}:00', 'count': hourly_dict.get(h, 0)} for h in range(24)]
+    hourly_orders = [{'hour': f'{h:02d}:00', 'count': 0} for h in range(24)]
+    if heatmap_day:
+        heat_start = _aware_start_of_day(heatmap_day)
+        heat_end = _aware_end_of_day(heatmap_day)
+        hourly_rows = (
+            Order.objects.filter(order_time__gte=heat_start, order_time__lte=heat_end)
+            .annotate(order_hour=ExtractHour('order_time'))
+            .values('order_hour')
+            .annotate(count=Count('id'))
+            .order_by('order_hour')
+        )
+        hourly_map = {row['order_hour']: row['count'] for row in hourly_rows if row['order_hour'] is not None}
+        hourly_orders = [{'hour': f'{h:02d}:00', 'count': hourly_map.get(h, 0)} for h in range(24)]
 
-    # 这里先不执行 OrderItem / Dish 的统计、推荐、预测相关逻辑
-    top_dishes = []
-    bottom_dishes = []
-    predicted_orders = []
-    mape = None
-    ai_suggestion = ''
-    prep_list = []
-    predicted_revenue = 0
-    actual_vs_pred_data = []
-    top_predicted_dishes = []
+    all_dishes = list(Dish.objects.values('name'))
+    dish_sales_map = {
+        item['item_name']: int(item['total_sales'] or 0)
+        for item in Order.objects.values('item_name').annotate(total_sales=Sum('quantity'))
+        if item['item_name']
+    }
+    unsold_dishes = sorted(
+        ({'name': dish['name'], 'value': int(dish_sales_map.get(dish['name'], 0) or 0)} for dish in all_dishes),
+        key=lambda x: (x['value'], x['name'])
+    )[:5]
 
     context = {
         'total_orders': total_orders,
         'total_amount': total_amount,
+        'total_amount_wan': total_amount_wan,
         'daily_orders': daily_orders,
-        'top_dishes': top_dishes,
-        'bottom_dishes': bottom_dishes,
+        'top_dishes': [],
+        'bottom_dishes': unsold_dishes,
         'hourly_orders': hourly_orders,
-        'predicted_orders': predicted_orders,
-        'mape': round(mape, 2) if mape is not None else None,
-        'ai_suggestion': ai_suggestion,
-        'prep_list': prep_list,
+        'predicted_orders': [],
+        'mape': None,
+        'ai_suggestion': '',
+        'prep_list': [],
         'avg_order_value': avg_order_value,
-        'predicted_revenue': predicted_revenue,
-        'actual_vs_pred_data': actual_vs_pred_data,
-        'top_predicted_dishes': top_predicted_dishes,
+        'predicted_revenue': 0,
+        'actual_vs_pred_data': [],
+        'top_predicted_dishes': [],
+        'month': month_param,
+        'day': day_param,
     }
     return render(request, 'dashboard.html', context)
 
-# =========================================================
-# 2. 订单管理中心：列表、分页与多条件联合搜索
-# =========================================================
+
 @login_required
 def order_list(request):
-    # 1. 获取所有订单基础查询集
-    orders = Order.objects.all().order_by('-order_time')
-    
-    # 2. 获取前端传来的搜索参数
-    start_date = request.GET.get('start_date', '')
-    end_date = request.GET.get('end_date', '')
-    dish_name = request.GET.get('dish_name', '')
-    min_price = request.GET.get('min_price', '')
-    max_price = request.GET.get('max_price', '')
+    orders_queryset = (
+        Order.objects.only(
+            'order_number',
+            'order_time',
+            'item_name',
+            'category',
+            'quantity',
+            'total_amount',
+            'payment_method',
+            'time_of_sale',
+        )
+        .select_related()
+        .order_by('-order_time')
+    )
 
-    # 3. 动态拼接筛选条件 (Django ORM 神器)
-    if start_date:
-        orders = orders.filter(order_time__date__gte=start_date) # 大于等于开始日期
-    if end_date:
-        orders = orders.filter(order_time__date__lte=end_date)   # 小于等于结束日期
+    start_date = (request.GET.get('start_date') or '').strip()
+    end_date = (request.GET.get('end_date') or '').strip()
+    dish_name = (request.GET.get('dish_name') or '').strip()
+    min_price = (request.GET.get('min_price') or '').strip()
+    max_price = (request.GET.get('max_price') or '').strip()
+
+    start_dt = _parse_day_param(start_date)
+    end_dt = _parse_day_param(end_date)
+
+    if start_dt:
+        orders_queryset = orders_queryset.filter(order_time__gte=_aware_start_of_day(start_dt))
+    if end_dt:
+        orders_queryset = orders_queryset.filter(order_time__lte=_aware_end_of_day(end_dt))
     if dish_name:
-        orders = orders.filter(item_name__icontains=dish_name)   # 菜名模糊包含查询
+        orders_queryset = orders_queryset.filter(item_name__icontains=dish_name)
     if min_price:
-        orders = orders.filter(total_amount__gte=min_price)      # 金额大于等于
+        orders_queryset = orders_queryset.filter(total_amount__gte=min_price)
     if max_price:
-        orders = orders.filter(total_amount__lte=max_price)      # 金额小于等于
+        orders_queryset = orders_queryset.filter(total_amount__lte=max_price)
 
-    # 4. 设置分页器
-    paginator = Paginator(orders, 15) 
+    query_signature = _query_signature({
+        'start_date': start_date,
+        'end_date': end_date,
+        'dish_name': dish_name,
+        'min_price': min_price,
+        'max_price': max_price,
+    })
+    cache_key = f'order_list_total_count:{query_signature or "all"}'
+    total_count = _cache_count(orders_queryset, cache_key)
+
+    paginator = Paginator(orders_queryset, 20)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
-    
-    # 5. 组装查询字符串，传递给前端分页器，防止翻页时丢失搜索条件
+
     query_params = request.GET.copy()
-    if 'page' in query_params:
-        del query_params['page']
+    query_params.pop('page', None)
     query_string = query_params.urlencode()
-    
+
     context = {
         'page_obj': page_obj,
-        'query_string': query_string, # 将参数串传给页面
+        'query_string': query_string,
+        'total_count': total_count,
     }
     return render(request, 'order_list.html', context)
 
-# =========================================================
-# 3. 订单管理中心：安全删除接口
-# =========================================================
+
+def _dashboard_range_from_params(month_param, day_param):
+    latest_order = Order.objects.order_by('-order_time').only('order_time').first()
+
+    def _month_range(anchor_date):
+        month_start = anchor_date.replace(day=1)
+        if month_start.month == 12:
+            month_end = month_start.replace(year=month_start.year + 1, month=1, day=1)
+        else:
+            month_end = month_start.replace(month=month_start.month + 1, day=1)
+        trend_start = make_aware(datetime.combine(month_start, dt_time.min))
+        trend_end = make_aware(datetime.combine(month_end, dt_time.min)) - timedelta(microseconds=1)
+        return trend_start, trend_end
+
+    def _latest_month_and_day():
+        if not latest_order:
+            return None, None
+        latest_local = timezone.localtime(latest_order.order_time)
+        trend_start, trend_end = _month_range(latest_local.date())
+        heatmap_day = make_aware(datetime.combine(latest_local.date(), dt_time.min))
+        return trend_start, trend_end, heatmap_day
+
+    if day_param:
+        day_dt = _parse_day_param(day_param)
+        if day_dt:
+            selected_day = timezone.localtime(day_dt).date()
+            trend_start, trend_end = _month_range(selected_day)
+            heatmap_day = make_aware(datetime.combine(selected_day, dt_time.min))
+            return trend_start, trend_end, heatmap_day, None
+
+    if month_param:
+        month_dt = _parse_month_param(month_param)
+        if month_dt:
+            selected_month = month_dt.date().replace(day=1)
+            trend_start, trend_end = _month_range(selected_month)
+            if latest_order:
+                heatmap_day = make_aware(datetime.combine(timezone.localtime(latest_order.order_time).date(), dt_time.min))
+                return trend_start, trend_end, heatmap_day, None
+
+    # 优先展示“最后一个有数据的月份”与“最后一天”
+    if latest_order:
+        latest_local = timezone.localtime(latest_order.order_time)
+        trend_start, trend_end = _month_range(latest_local.date())
+        heatmap_day = make_aware(datetime.combine(latest_local.date(), dt_time.min))
+
+        # 如果最近一个月没有数据，向前滚动查找最近一个有数据的月份
+        if not Order.objects.filter(order_time__gte=trend_start, order_time__lte=trend_end).exists():
+            probe_date = latest_local.date().replace(day=1)
+            for _ in range(36):
+                if probe_date.month == 1:
+                    probe_date = probe_date.replace(year=probe_date.year - 1, month=12)
+                else:
+                    probe_date = probe_date.replace(month=probe_date.month - 1)
+                probe_start, probe_end = _month_range(probe_date)
+                if Order.objects.filter(order_time__gte=probe_start, order_time__lte=probe_end).exists():
+                    trend_start, trend_end = probe_start, probe_end
+                    break
+
+        # 如果最后一天没数据，向前找最近一天有数据的日期
+        if not Order.objects.filter(order_time__gte=_aware_start_of_day(heatmap_day), order_time__lte=_aware_end_of_day(heatmap_day)).exists():
+            probe_day = latest_local.date()
+            for _ in range(90):
+                probe_day -= timedelta(days=1)
+                probe_start = make_aware(datetime.combine(probe_day, dt_time.min))
+                probe_end = make_aware(datetime.combine(probe_day, dt_time.max))
+                if Order.objects.filter(order_time__gte=probe_start, order_time__lte=probe_end).exists():
+                    heatmap_day = probe_start
+                    break
+
+        return trend_start, trend_end, heatmap_day, None
+
+    now = timezone.now()
+    return now - timedelta(days=29), now, now, None
+
+
+def dashboard_data_api(request):
+    try:
+        month_param = request.GET.get('month')
+        day_param = request.GET.get('day')
+        
+        # 1. 获取最新订单日期作为锚点，保证默认能看到数据
+        latest_order = Order.objects.order_by('-order_time').first()
+        if not latest_order:
+            # 如果数据库一条数据都没有的兜底
+            return JsonResponse({'daily_trend': [], 'hourly_distribution': [], 'category_revenue': [], 'time_of_sale_orders': [], 'payment_method_orders': [], 'top_dishes': []})
+
+        anchor_date = timezone.localtime(latest_order.order_time).date()
+
+        if day_param:
+            target_date = datetime.strptime(day_param, '%Y-%m-%d').date()
+        elif month_param:
+            target_date = datetime.strptime(month_param + '-01', '%Y-%m-%d').date()
+        else:
+            target_date = anchor_date
+
+        # 2. 核心数据统计 ======
+        trend_start_date = target_date - timedelta(days=29)
+        aware_trend_start = make_aware(datetime.combine(trend_start_date, dt_time.min))
+        aware_target_end = make_aware(datetime.combine(target_date, dt_time.max))
+        aware_target_start = make_aware(datetime.combine(target_date, dt_time.min))
+
+        # A. 30天趋势 (绕开 TruncDate，使用超快只读内存统计)
+        # 只取时间字段，绝不实例化 Order 对象，速度极快
+        trend_dts = Order.objects.filter(
+            order_time__gte=aware_trend_start, 
+            order_time__lte=aware_target_end
+        ).values_list('order_time', flat=True)
+        
+        daily_map = {}
+        for dt in trend_dts:
+            d_str = timezone.localtime(dt).strftime('%Y-%m-%d')
+            daily_map[d_str] = daily_map.get(d_str, 0) + 1
+            
+        daily_trend = []
+        for i in range(30):
+            d_str = (trend_start_date + timedelta(days=i)).strftime('%Y-%m-%d')
+            daily_trend.append({'date': d_str, 'count': daily_map.get(d_str, 0)})
+
+        # B. 24小时分布 (绕开 ExtractHour)
+        hourly_dts = Order.objects.filter(
+            order_time__gte=aware_target_start, 
+            order_time__lte=aware_target_end
+        ).values_list('order_time', flat=True)
+        
+        hourly_map = {}
+        for dt in hourly_dts:
+            h = timezone.localtime(dt).hour
+            hourly_map[h] = hourly_map.get(h, 0) + 1
+            
+        hourly_distribution = [{'count': hourly_map.get(h, 0)} for h in range(24)]
+
+        # C. 菜品分类营收 (全局)
+        cat_qs = Order.objects.values('category').annotate(value=Sum('total_amount'))
+        category_revenue = [{'name': item['category'] or '未知', 'value': float(item['value'] or 0)} for item in cat_qs if item['category']]
+
+        # D. 售卖时段 (全局)
+        time_qs = Order.objects.values('time_of_sale').annotate(value=Count('id'))
+        time_of_sale_orders = [{'name': item['time_of_sale'] or '未知', 'value': item['value']} for item in time_qs if item['time_of_sale']]
+
+        # E. 支付方式 (全局)
+        pay_qs = Order.objects.values('payment_method').annotate(value=Count('id'))
+        payment_method_orders = [{'name': item['payment_method'] or '未知', 'value': item['value']} for item in pay_qs if item['payment_method']]
+
+        # F. 销量 TOP 5 (全局)
+        dish_qs = Order.objects.values('item_name').annotate(value=Sum('quantity')).order_by('-value')[:5]
+        top_dishes = [{'name': item['item_name'] or '未知', 'value': int(item['value'] or 0)} for item in dish_qs if item['item_name']]
+
+        return JsonResponse({
+            'daily_trend': daily_trend,
+            'hourly_distribution': hourly_distribution,
+            'category_revenue': category_revenue,
+            'time_of_sale_orders': time_of_sale_orders,
+            'payment_method_orders': payment_method_orders,
+            'top_dishes': top_dishes
+        })
+
+    except Exception as e:
+        print("❌ API 内部崩溃详细日志:")
+        print(traceback.format_exc())
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 @login_required
 def order_delete(request, order_id):
     order = get_object_or_404(Order, id=order_id)
@@ -141,9 +380,7 @@ def order_delete(request, order_id):
         order.delete()
     return redirect('order_list')
 
-# =========================================================
-# 4. 订单表单类 (修复不可编辑字段报错)
-# =========================================================
+
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
@@ -167,9 +404,7 @@ class OrderForm(forms.ModelForm):
             'time_of_sale': '售卖时段',
         }
 
-# =========================================================
-# 5. 添加订单视图
-# =========================================================
+
 @login_required
 def order_create(request):
     if request.method == 'POST':
@@ -180,12 +415,10 @@ def order_create(request):
     else:
         default_number = f"ORD{int(time.time())}"
         form = OrderForm(initial={'order_number': default_number})
-    
+
     return render(request, 'order_form.html', {'form': form, 'title': '手动录入新订单'})
 
-# =========================================================
-# 6. 编辑订单视图
-# =========================================================
+
 @login_required
 def order_edit(request, order_id):
     order = get_object_or_404(Order, id=order_id)
@@ -196,37 +429,43 @@ def order_edit(request, order_id):
             return redirect('order_list')
     else:
         form = OrderForm(instance=order)
-        
+
     return render(request, 'order_form.html', {'form': form, 'title': f'编辑订单: {order.order_number}'})
 
-# =========================================================
-# 7. 菜品表单类
-# =========================================================
+
 class DishForm(forms.ModelForm):
     class Meta:
         model = Dish
-        fields = ['name']
+        fields = ['name', 'category', 'price', 'description']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'required': 'required', 'placeholder': '例如: 宫保鸡丁'}),
+            'category': forms.TextInput(attrs={'class': 'form-control', 'required': 'required', 'placeholder': '例如: 快餐 / 饮品'}),
+            'price': forms.NumberInput(attrs={'class': 'form-control', 'required': 'required', 'step': '0.01', 'placeholder': '例如: 28.00'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '请输入菜品简介'}),
         }
         labels = {
             'name': '菜品名称',
+            'category': '菜品分类',
+            'price': '菜品单价',
+            'description': '菜品简介',
         }
 
-# =========================================================
-# 8. 我的菜品管理：列表与分页
-# =========================================================
+
 @login_required
 def dish_list(request):
-    dishes = Dish.objects.all().order_by('category', '-price')
-    paginator = Paginator(dishes, 15) 
+    dishes_queryset = Dish.objects.only('name', 'category', 'price', 'description').order_by('category', '-price')
+    cache_key = 'dish_list_total_count:all'
+    total_count = _cache_count(dishes_queryset, cache_key)
+
+    paginator = Paginator(dishes_queryset, 20)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
-    return render(request, 'dish_list.html', {'page_obj': page_obj})
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
+    return render(request, 'dish_list.html', {'page_obj': page_obj, 'query_string': query_string, 'total_count': total_count})
 
-# =========================================================
-# 9. 菜品管理：添加菜品
-# =========================================================
+
 @login_required
 def dish_create(request):
     if request.method == 'POST':
@@ -238,9 +477,7 @@ def dish_create(request):
         form = DishForm()
     return render(request, 'dish_form.html', {'form': form, 'title': '新增菜品'})
 
-# =========================================================
-# 10. 菜品管理：编辑菜品
-# =========================================================
+
 @login_required
 def dish_edit(request, dish_id):
     dish = get_object_or_404(Dish, id=dish_id)
@@ -253,9 +490,7 @@ def dish_edit(request, dish_id):
         form = DishForm(instance=dish)
     return render(request, 'dish_form.html', {'form': form, 'title': f'编辑菜品: {dish.name}'})
 
-# =========================================================
-# 11. 菜品管理：删除菜品
-# =========================================================
+
 @login_required
 def dish_delete(request, dish_id):
     dish = get_object_or_404(Dish, id=dish_id)
@@ -263,22 +498,18 @@ def dish_delete(request, dish_id):
         dish.delete()
     return redirect('dish_list')
 
-# =========================================================
-# 12. 员工注册表单 (继承自带表单并注入高级 CSS 样式)
-# =========================================================
+
 class CustomRegisterForm(UserCreationForm):
     class Meta:
         model = User
-        fields = ['username'] 
-        
+        fields = ['username']
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs['class'] = 'form-control'
 
-# =========================================================
-# 13. 员工注册视图
-# =========================================================
+
 def register(request):
     if request.method == 'POST':
         form = CustomRegisterForm(request.POST)
@@ -288,24 +519,19 @@ def register(request):
             return redirect('dashboard')
     else:
         form = CustomRegisterForm()
-        
+
     return render(request, 'register.html', {'form': form})
 
-# =========================================================
-# 14. 员工账号管理：列表展示
-# =========================================================
+
 @login_required
 def user_list(request):
-    # 获取所有用户，按注册时间倒序排列
     users = User.objects.all().order_by('-date_joined')
-    paginator = Paginator(users, 15) 
+    paginator = Paginator(users, 15)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
     return render(request, 'user_list.html', {'page_obj': page_obj})
 
-# =========================================================
-# 15. 员工账号管理：编辑表单 (分配权限、停用账号)
-# =========================================================
+
 class UserEditForm(forms.ModelForm):
     class Meta:
         model = User
@@ -322,44 +548,36 @@ class UserEditForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        # 🌟 核心防越权 1：提取视图层传进来的“当前登录用户 (current_user)”
         self.current_user = kwargs.pop('current_user', None)
         super().__init__(*args, **kwargs)
-        
-        # 🌟 核心防越权 2：如果当前登录的不是店长，强制锁死“店长权限”复选框！
         if self.current_user and not self.current_user.is_superuser:
             self.fields['is_superuser'].disabled = True
-            # 给普通员工一个温馨提示，防止他们觉得是系统卡了点不动
             self.fields['is_superuser'].label = '授予店长权限 (⚠️ 权限不足：仅现任店长可勾选此项)'
+
 
 @login_required
 def user_edit(request, user_id):
     edit_user = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
-        # 🌟 把当前发请求的人 (request.user) 塞进表单里做权限判断
         form = UserEditForm(request.POST, instance=edit_user, current_user=request.user)
         if form.is_valid():
             form.save()
             return redirect('user_list')
     else:
-        # 🌟 GET 请求展示页面时，同样塞入当前用户
         form = UserEditForm(instance=edit_user, current_user=request.user)
-        
+
     return render(request, 'user_form.html', {'form': form, 'title': f'编辑员工权限: {edit_user.username}'})
 
-# =========================================================
-# 16. 员工账号管理：安全删除
-# =========================================================
+
 @login_required
 def user_delete(request, user_id):
     delete_user = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
-        # 🌟 核心防越权 3：删除接口的终极拦截
         if not request.user.is_superuser:
-            pass # 如果不是店长发起的删除请求，静默忽略，不执行删除
+            pass
         elif delete_user == request.user:
-            pass # 店长也不能把自己删了（否则系统就没店长了）
+            pass
         else:
             delete_user.delete()
-            
+
     return redirect('user_list')
