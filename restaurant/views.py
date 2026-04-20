@@ -23,6 +23,12 @@ from sklearn.metrics import mean_absolute_percentage_error
 
 from .models import Dish, Order
 
+# 顶部新增引入
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import warnings
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+warnings.simplefilter('ignore', ConvergenceWarning) # 忽略底层计算的冗余警告
+
 def _parse_month_param(value):
     if not value:
         return None
@@ -164,8 +170,8 @@ def dashboard(request):
     bottom_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (x['value'], x['name']))[:5]
     top_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (-x['value'], x['name']))[:5]
 
-    # =========================================================
-    # 🌟 核心板块：机器学习预测 (以当前时间为标准)
+  # =========================================================
+    # 🌟 核心板块：时间序列预测 (Holt-Winters 指数平滑)
     # =========================================================
     historical_all = Order.objects.values('order_time')
     pred_daily_dict = {}
@@ -179,51 +185,79 @@ def dashboard(request):
     tomorrow_predicted_orders = 0
     purchase_list = []
     
-    if pred_daily_dict and len(pred_daily_dict) >= 3:
+    # 🌟 时序模型通常需要更长的数据来捕捉周期，这里设为至少需要 7 天数据
+    if pred_daily_dict and len(pred_daily_dict) >= 7:
+        # 1. 构建标准的时间序列 DataFrame
         df = pd.DataFrame([{'date': k, 'count': v} for k, v in pred_daily_dict.items()])
         df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
+        df.set_index('date', inplace=True)
+        df.sort_index(inplace=True)
         
-        df['weekday'] = df['date'].dt.weekday
-        df['is_weekend'] = (df['weekday'] >= 5).astype(int)
-        df['day_index'] = (df['date'] - df['date'].min()).dt.days
-
-        X = df[['day_index', 'weekday', 'is_weekend']]
-        y = df['count']
-
-        model = LinearRegression()
-        cv_folds = min(5, len(y) - 1)
-        y_pred = cross_val_predict(model, X, y, cv=cv_folds)
-        mape = mean_absolute_percentage_error(y, y_pred) * 100
-        model.fit(X, y)
-
-        historical_fitted = model.predict(X)
-        display_days = min(14, len(df))
-        for i in range(len(df) - display_days, len(df)):
-            actual_vs_pred_data.append({
-                'date': df['date'].iloc[i].strftime('%Y-%m-%d'), 
-                'actual': int(y.iloc[i]),
-                'predicted': max(0, int(round(historical_fitted[i])))
-            })
-
-        first_date_in_db = df['date'].min()
-        weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+        # 🌟 关键：餐饮数据可能某天没营业（缺数据），时序模型要求时间必须连续
+        # 因此生成连续的日期索引，并将缺失的日期销量填充为 0
+        idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
+        df = df.reindex(idx, fill_value=0)
         
-        for i in range(1, 8):
-            f_date = today + timedelta(days=i)
-            f_day_index = (pd.Timestamp(f_date) - first_date_in_db).days
-            f_weekday = f_date.weekday()
-            f_is_weekend = 1 if f_weekday >= 5 else 0
+        y = df['count'].astype(float)
+
+        # 2. 构建 Holt-Winters 时序模型
+        # 餐饮业通常具有 7 天的强周期性 (seasonal_periods=7)
+        # 使用加法模型 (add) 处理趋势和季节性
+        try:
+            # 如果数据量大于两周，启用季节性；否则只用简单趋势平滑
+            seasonal_opt = 'add' if len(y) >= 14 else None
+            periods_opt = 7 if len(y) >= 14 else None
             
-            f_X = pd.DataFrame({'day_index': [f_day_index], 'weekday': [f_weekday], 'is_weekend': [f_is_weekend]})
-            p_count = model.predict(f_X)[0]
+            model = ExponentialSmoothing(
+                y, 
+                trend='add', 
+                seasonal=seasonal_opt, 
+                seasonal_periods=periods_opt, 
+                initialization_method="estimated"
+            )
+            fit_model = model.fit()
+
+            # 3. 提取历史拟合数据 (用于图表对比和计算误差)
+            historical_fitted = fit_model.fittedvalues
             
-            predicted_orders.append({
-                'date': f"{f_date.strftime('%Y-%m-%d')} ({weekdays_cn[f_weekday]})", 
-                'predicted': max(0, int(round(p_count)))
-            })
-        
-        tomorrow_predicted_orders = predicted_orders[0]['predicted']
+            # 计算全量样本的 MAPE
+            # 过滤掉真实值为0的天数以防止除以0的数学错误
+            valid_idx = y > 0
+            if valid_idx.any():
+                mape = mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100
+            else:
+                mape = 0
+
+            # 组装最近 14 天的历史对比数据供前端展示
+            display_days = min(14, len(y))
+            for i in range(len(y) - display_days, len(y)):
+                actual_vs_pred_data.append({
+                    'date': y.index[i].strftime('%Y-%m-%d'), 
+                    'actual': int(y.iloc[i]),
+                    'predicted': max(0, int(round(historical_fitted.iloc[i])))
+                })
+
+            # 4. 🌟 预测未来 7 天
+            forecast_values = fit_model.forecast(7)
+            weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+            
+            for i in range(7):
+                f_date = today + timedelta(days=i+1)
+                f_weekday = f_date.weekday()
+                p_count = forecast_values.iloc[i]
+                
+                predicted_orders.append({
+                    'date': f"{f_date.strftime('%Y-%m-%d')} ({weekdays_cn[f_weekday]})", 
+                    'predicted': max(0, int(round(p_count)))
+                })
+            
+            tomorrow_predicted_orders = predicted_orders[0]['predicted']
+            
+        except Exception as e:
+            print(f"时序模型拟合失败，退回初始状态: {e}")
+            tomorrow_predicted_orders = 0
+
+
 
     # =======================================================
     # 🌟 核心修复 2：完全恢复与菜品管理一模一样的进销存公式
