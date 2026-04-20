@@ -11,6 +11,66 @@
         *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
         .app{display:flex;min-height:100vh;width:100%}.sidebar{width:260px;flex-shrink:0;background:var(--sidebar-bg);border-right:1px solid var(--sidebar-border);padding:18px 14px}.shell{display:flex;flex-direction:column;height:100%}.logo{height:72px;display:flex;align-items:center;padding:0 16px;font-size:18px;font-weight:700;letter-spacing:-.02em;color:var(--text)}.logo .icon{margin-right:10px;font-size:20px}.menu{display:flex;flex-direction:column;gap:8px;padding:8px 4px 0}.item{display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:12px;color:var(--text);font-size:15px;font-weight:500;transition:background-color .18s ease,transform .18s ease}.item:hover,.item.active{background:#000;color:#fff;transform:translateX(1px)}.item .icon{width:20px;text-align:center;flex-shrink:0}.main{flex:1;min-width:0;padding:24px 28px 28px}.container{max-width:1600px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;padding:8px 4px 14px}.head-left{display:flex;flex-direction:column;gap:12px}.head h1{margin:0;font-size:30px;letter-spacing:-.03em;font-weight:700}.filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.filters label{font-size:12px;color:var(--sub);font-weight:600}.filters input{height:38px;border:none;background:#F2F2F7;border-radius:10px;padding:0 12px;font-size:13px;color:var(--text);outline:none;box-shadow:none}.filters input:focus{background:#EBEBF0}.filters .hint{font-size:12px;color:var(--sub)}.account{display:flex;align-items:center;gap:12px;padding:8px 14px 8px 8px;background:rgba(255,255,255,.72);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.7);border-radius:999px;box-shadow:var(--shadow)}.avatar{width:34px;height:34px;border-radius:50%;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}.user{display:flex;flex-direction:column}.user-name{font-size:14px;font-weight:600}.user-role{font-size:12px;color:var(--sub)}.logout{color:#d92d20;text-decoration:none;font-size:14px;font-weight:600}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:18px}.card{background:var(--card);border-radius:16px;border:none;box-shadow:var(--shadow);padding:22px;text-align:center}.card h2{margin:0;font-size:34px;letter-spacing:-.03em}.card p{margin:8px 0 0;color:var(--sub);font-size:13px}.blue{color:#007AFF}.green{color:#34C759}.orange{color:#FF9500}.purple{color:#AF52DE}.charts{display:grid;grid-template-columns:repeat(12,1fr);gap:18px;margin-bottom:18px}.chart{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:18px;min-width:0}.chart h3{margin:0 0 14px;font-size:16px;letter-spacing:-.02em}.box{width:100%;height:320px}.box.tall{height:360px}.span-12{grid-column:span 12}.span-8{grid-column:span 8}.span-6{grid-column:span 6}.span-4{grid-column:span 4}.span-3{grid-column:span 3}.loading,.error{padding:14px 16px;border-radius:14px;margin-bottom:18px;background:#fff;box-shadow:var(--shadow)}.loading{color:#007AFF}.error{color:#d92d20;display:none}
         @media (max-width:1100px){.sidebar{display:none}.main{padding-left:18px;padding-right:18px}.stat-grid,.charts{grid-template-columns:1fr}.span-12,.span-8,.span-6,.span-4,.span-3{grid-column:span 12}.head{flex-direction:column;align-items:flex-start}.account{align-self:stretch;justify-content:space-between}}
+        /* ========================================= */
+        /* 🖨️ 打印机专属样式 (修复数据不显示 & 多空白页) */
+        /* ========================================= */
+        @media print {
+            /* 1. 精准点杀：只隐藏侧边栏、头部、统计卡片和图表区域 */
+            .sidebar, .head, .stat-grid, .charts, .chart-container, .loading, .error {
+                display: none !important;
+            }
+            
+            /* 2. 洗白容器：把所有外层骨架变成一张没有任何边距的“纯白纸” */
+            body, html, .app, .main, .container {
+                background: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                display: block !important; /* 解除 flex 布局，防止高度撑开 */
+            }
+            
+            /* 3. 释放弹窗：让它从悬浮状态落地，完美贴合纸张 */
+            #prepModal {
+                display: block !important;
+                position: static !important; /* 关键：取消固定定位，防止强制分页 */
+                width: 100% !important;
+                height: auto !important;
+                background: none !important;
+                backdrop-filter: none !important;
+            }
+            
+            #prepModal > div {
+                width: 100% !important;
+                max-width: 100% !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-height: none !important;
+                overflow: visible !important;
+                border: none !important;
+            }
+
+            /* 4. 隐藏不需要打印的按钮 */
+            #prepModal button {
+                display: none !important;
+            }
+
+            /* 5. 强化表格排版，清晰且不被切断 */
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+            }
+            tr {
+                page-break-inside: avoid !important; /* 防止一行菜品被强行切在两页纸上 */
+            }
+            th, td {
+                color: #000 !important; /* 纯黑打印最清晰 */
+                border-bottom: 1px solid #000 !important; 
+                font-size: 16px !important;
+                padding: 10px 0 !important;
+                background: transparent !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -63,20 +123,189 @@
                 <div class="chart span-6"><h3>销量 TOP 5 菜品</h3><div id="top-dishes-chart" class="box"></div></div>
                 <div class="chart span-6"><h3>支付方式偏好</h3><div id="payment-method-chart" class="box"></div></div>
             </div>
-        </div>
-    </main>
+
+           <div class="chart-container" style="margin-bottom: 40px; margin-top: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
+        <h3 style="margin: 0; display: flex; align-items: center; border: none; padding-left: 0;">
+            AI 未来 7 天订单量预测 
+            {% if mape %}
+            <span style="font-size: 13px; color: var(--text-sub); font-weight: normal; margin-left: 15px; background: #f4f7f6; padding: 4px 10px; border-radius: 4px;">
+                模型误差率 MAPE: <span style="color: var(--accent-green); font-weight: bold;">{{ mape }}%</span>
+            </span>
+            {% endif %}
+        </h3>
+        <button onclick="document.getElementById('prepModal').style.display='flex'" class="btn-primary" style="background: var(--accent-green); box-shadow: 0 4px 10px rgba(82, 196, 26, 0.3);">🛒 生成明日精准采购单</button>
+    </div>
+    
+    <div id="predicted-orders-chart" style="width: 100%; height: 350px;"></div>
 </div>
+
+<div id="prepModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 9999; backdrop-filter: blur(4px);">
+    <div style="background: #fff; width: 90%; max-width: 650px; border-radius: 12px; padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-height: 85vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ebeef5; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="margin: 0; font-size: 20px; color: #333;">🛒 明日后厨精准备货清单</h2>
+            <button style="font-size: 28px; cursor: pointer; color: #999; border: none; background: none; line-height: 1;" onclick="document.getElementById('prepModal').style.display='none'">&times;</button>
+        </div>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+            此清单基于线性回归预测的明日总单量，并结合近 30 天各菜品销售比重智能拆解得出。
+        </p>
+        <table style="width: 100%; border-collapse: collapse; text-align: center;">
+            <thead>
+                <tr style="background-color: #fafafa; border-bottom: 1px solid #ebeef5;">
+                    <th style="padding: 12px; text-align: left; color: #333;">菜品名称</th>
+                    <th style="padding: 12px; color: #333;">分类</th>
+                    <th style="padding: 12px; text-align: right; color: #333;">AI 建议备货份数</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in prep_list %}
+                <tr style="border-bottom: 1px solid #ebeef5;">
+                    <td style="padding: 12px; font-weight: 500; text-align: left; color: #333;">{{ item.name }}</td>
+                    <td style="padding: 12px;"><span style="background: #f0f2f5; padding: 4px 10px; border-radius: 4px; font-size: 12px; color: #555;">{{ item.category }}</span></td>
+                    <td style="padding: 12px; font-weight: bold; color: #ff4d4f; font-size: 16px; text-align: right;">{{ item.quantity }} 份</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" style="text-align:center; padding: 20px; color: #999;">暂无历史数据，无法生成采购建议</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px;">
+            <button type="button" style="background-color: #f0f2f5; color: #333; border: 1px solid #d9d9d9; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;" onclick="document.getElementById('prepModal').style.display='none'">🔙 返回大屏</button>
+            <button type="button" style="background-color: #1890ff; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;" onclick="window.print()">🖨️ 打印清单给后厨</button>
+        </div>
+    </div>
+</div>
+{{ predicted_orders|json_script:"predicted-orders-data" }}
+
 <script>
-document.addEventListener('DOMContentLoaded',()=>{const loading=document.getElementById('dashboard-loading'),error=document.getElementById('dashboard-error');const monthInput=document.getElementById('month-filter');const dayInput=document.getElementById('day-filter');if(typeof echarts==='undefined'){loading.style.display='none';error.style.display='block';error.textContent='图表引擎加载失败，请检查网络或静态资源配置。';return}const charts={};const initCharts=()=>{charts.category=echarts.init(document.getElementById('category-revenue-chart'));charts.sale=echarts.init(document.getElementById('sale-period-chart'));charts.top=echarts.init(document.getElementById('top-dishes-chart'));charts.pay=echarts.init(document.getElementById('payment-method-chart'));charts.daily=echarts.init(document.getElementById('daily-trend-chart'));charts.hourly=echarts.init(document.getElementById('hourly-heatmap-chart'));};
-const renderAll=(data)=>{charts.category.setOption({color:['#007AFF','#AF52DE','#FF2D55','#34C759','#64D2FF'],tooltip:{trigger:'item',formatter:'{b}<br/>营收: ¥ {c}<br/>占比: {d}%'},legend:{bottom:0},series:[{name:'营收占比',type:'pie',radius:['44%','70%'],avoidLabelOverlap:false,itemStyle:{borderRadius:12,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%'},data:data.category_revenue||[]}]},true);
-charts.sale.setOption({color:['#34C759'],tooltip:{trigger:'axis'},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'category',data:(data.time_of_sale_orders||[]).map(x=>x.name),axisLine:{lineStyle:{color:'#D1D1D6'}}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},series:[{type:'bar',data:(data.time_of_sale_orders||[]).map(x=>x.value),itemStyle:{color:'#007AFF',borderRadius:[10,10,0,0]}}]},true);
-charts.top.setOption({color:['#AF52DE'],tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},yAxis:{type:'category',data:(data.top_dishes||[]).map(x=>x.name).reverse(),axisLine:{lineStyle:{color:'#D1D1D6'}}},series:[{type:'bar',data:(data.top_dishes||[]).map(x=>x.value).reverse(),itemStyle:{color:'#AF52DE',borderRadius:[0,10,10,0]}}]},true);
-charts.pay.setOption({color:['#34C759','#007AFF','#FF2D55','#AF52DE'],tooltip:{trigger:'item',formatter:'{b}<br/>订单数: {c}<br/>占比: {d}%'},legend:{bottom:0},series:[{name:'支付方式',type:'pie',radius:['42%','68%'],avoidLabelOverlap:false,itemStyle:{borderRadius:12,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%'},data:data.payment_method_orders||[]}]},true);
-charts.daily.setOption({grid:{left:'3%',right:'3%',top:'12%',bottom:'8%',containLabel:true},tooltip:{trigger:'axis'},xAxis:{type:'category',boundaryGap:false,data:(data.daily_trend||[]).map(i=>i.date),axisLine:{lineStyle:{color:'#D1D1D6'}},axisLabel:{color:'#6E6E73'}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}},axisLabel:{color:'#6E6E73'}},series:[{type:'line',smooth:true,data:(data.daily_trend||[]).map(i=>i.count),symbol:'circle',symbolSize:6,lineStyle:{width:3,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#4DA3FF'},{offset:1,color:'#007AFF'}])},itemStyle:{color:'#007AFF'},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(0,122,255,0.28)'},{offset:1,color:'rgba(0,122,255,0.02)'}])}}]},true);
-charts.hourly.setOption({grid:{left:'5%',right:'3%',top:'12%',bottom:'8%',containLabel:true},tooltip:{trigger:'axis'},xAxis:{type:'category',data:Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`),axisLabel:{color:'#6E6E73'}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}},axisLabel:{color:'#6E6E73'}},series:[{type:'bar',data:(data.hourly_distribution||[]).map(i=>i.count),barWidth:'60%',itemStyle:{borderRadius:[8,8,0,0],color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#FFD6A5'},{offset:1,color:'#FF6B35'}])}}]},true);
-};
-const loadData=async()=>{loading.style.display='block';error.style.display='none';try{const params=new URLSearchParams();if(monthInput.value)params.set('month',monthInput.value);if(dayInput.value)params.set('day',dayInput.value);const url='/api/dashboard-data/' + (params.toString() ? `?${params.toString()}` : '');const response=await fetch(url);if(!response.ok)throw new Error(`请求失败: ${response.status}`);const data=await response.json();loading.style.display='none';renderAll(data);}catch(err){loading.style.display='none';error.style.display='block';error.textContent='真实数据加载失败，请检查接口或数据库字段。';console.error(err)}};
-initCharts();loadData();window.addEventListener('resize',()=>Object.values(charts).forEach(chart=>chart.resize()));let timer=null;const triggerReload=()=>{clearTimeout(timer);timer=setTimeout(loadData,250)};monthInput.addEventListener('change',triggerReload);dayInput.addEventListener('change',triggerReload);});
+document.addEventListener('DOMContentLoaded', () => {
+    const loading = document.getElementById('dashboard-loading'),
+          error = document.getElementById('dashboard-error');
+    const monthInput = document.getElementById('month-filter');
+    const dayInput = document.getElementById('day-filter');
+    const prepModal = document.getElementById('prepModal');
+
+    // 弹窗逻辑：点击遮罩层外部关闭
+    if (prepModal) {
+        prepModal.addEventListener('click', (e) => {
+            if (e.target === prepModal) prepModal.style.display = 'none';
+        });
+    }
+
+    if (typeof echarts === 'undefined') {
+        loading.style.display = 'none';
+        error.style.display = 'block';
+        error.textContent = '图表引擎加载失败，请检查网络或静态资源配置。';
+        return;
+    }
+
+    const charts = {};
+    const initCharts = () => {
+        charts.category = echarts.init(document.getElementById('category-revenue-chart'));
+        charts.sale = echarts.init(document.getElementById('sale-period-chart'));
+        charts.top = echarts.init(document.getElementById('top-dishes-chart'));
+        charts.pay = echarts.init(document.getElementById('payment-method-chart'));
+        charts.daily = echarts.init(document.getElementById('daily-trend-chart'));
+        charts.hourly = echarts.init(document.getElementById('hourly-heatmap-chart'));
+    };
+
+    // ==========================================
+    // 🌟 独立渲染 AI 预测图表 (不受下方 AJAX 影响)
+    // ==========================================
+    let predictedChart = null;
+    try {
+        const predictedDataEl = document.getElementById('predicted-orders-data');
+        const predictedData = JSON.parse(predictedDataEl ? predictedDataEl.textContent : "[]");
+        const predictedChartDiv = document.getElementById('predicted-orders-chart');
+
+        if (predictedData && predictedData.length > 0 && predictedChartDiv) {
+            predictedChart = echarts.init(predictedChartDiv, null, { renderer: 'canvas' });
+            predictedChart.setOption({
+                backgroundColor: 'transparent',
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                grid: { left: '3%', right: '3%', top: '12%', bottom: '8%', containLabel: true },
+                xAxis: { 
+                    type: 'category', 
+                    data: predictedData.map(item => item.date), 
+                    axisLabel: { color: '#6E6E73', rotate: 0 } // 不倾斜更清爽 
+                },
+                yAxis: { 
+                    type: 'value', 
+                    splitLine: { lineStyle: { color: '#EFEFF4' } }, 
+                    axisLabel: { color: '#6E6E73' } 
+                },
+                series: [{ 
+                    name: '预测订单量',
+                    data: predictedData.map(item => item.predicted), 
+                    type: 'bar', 
+                    barWidth: '40%',
+                    itemStyle: { 
+                        // 完美复刻图片的浅绿到深绿渐变
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#73d13d' }, 
+                            { offset: 1, color: '#52c41a' }
+                        ]),
+                        borderRadius: [6, 6, 0, 0]
+                    },
+                    label: { show: true, position: 'top', color: '#52c41a', fontSize: 14, fontWeight: 'bold' }
+                }]
+            });
+        }
+    } catch (e) {
+        console.error("AI预测图表渲染失败:", e);
+    }
+
+    // ==========================================
+    // 常规图表渲染 (基于 AJAX 接口返回数据)
+    // ==========================================
+    const renderAll = (data) => {
+        charts.category.setOption({color:['#007AFF','#AF52DE','#FF2D55','#34C759','#64D2FF'],tooltip:{trigger:'item',formatter:'{b}<br/>营收: ¥ {c}<br/>占比: {d}%'},legend:{bottom:0},series:[{name:'营收占比',type:'pie',radius:['44%','70%'],avoidLabelOverlap:false,itemStyle:{borderRadius:12,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%'},data:data.category_revenue||[]}]},true);
+        charts.sale.setOption({color:['#34C759'],tooltip:{trigger:'axis'},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'category',data:(data.time_of_sale_orders||[]).map(x=>x.name),axisLine:{lineStyle:{color:'#D1D1D6'}}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},series:[{type:'bar',data:(data.time_of_sale_orders||[]).map(x=>x.value),itemStyle:{color:'#007AFF',borderRadius:[10,10,0,0]}}]},true);
+        charts.top.setOption({color:['#AF52DE'],tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},yAxis:{type:'category',data:(data.top_dishes||[]).map(x=>x.name).reverse(),axisLine:{lineStyle:{color:'#D1D1D6'}}},series:[{type:'bar',data:(data.top_dishes||[]).map(x=>x.value).reverse(),itemStyle:{color:'#AF52DE',borderRadius:[0,10,10,0]}}]},true);
+        charts.pay.setOption({color:['#34C759','#007AFF','#FF2D55','#AF52DE'],tooltip:{trigger:'item',formatter:'{b}<br/>订单数: {c}<br/>占比: {d}%'},legend:{bottom:0},series:[{name:'支付方式',type:'pie',radius:['42%','68%'],avoidLabelOverlap:false,itemStyle:{borderRadius:12,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%'},data:data.payment_method_orders||[]}]},true);
+        charts.daily.setOption({grid:{left:'3%',right:'3%',top:'12%',bottom:'8%',containLabel:true},tooltip:{trigger:'axis'},xAxis:{type:'category',boundaryGap:false,data:(data.daily_trend||[]).map(i=>i.date),axisLine:{lineStyle:{color:'#D1D1D6'}},axisLabel:{color:'#6E6E73'}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}},axisLabel:{color:'#6E6E73'}},series:[{type:'line',smooth:true,data:(data.daily_trend||[]).map(i=>i.count),symbol:'circle',symbolSize:6,lineStyle:{width:3,color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#4DA3FF'},{offset:1,color:'#007AFF'}])},itemStyle:{color:'#007AFF'},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(0,122,255,0.28)'},{offset:1,color:'rgba(0,122,255,0.02)'}])}}]},true);
+        charts.hourly.setOption({grid:{left:'5%',right:'3%',top:'12%',bottom:'8%',containLabel:true},tooltip:{trigger:'axis'},xAxis:{type:'category',data:Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`),axisLabel:{color:'#6E6E73'}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}},axisLabel:{color:'#6E6E73'}},series:[{type:'bar',data:(data.hourly_distribution||[]).map(i=>i.count),barWidth:'60%',itemStyle:{borderRadius:[8,8,0,0],color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#FFD6A5'},{offset:1,color:'#FF6B35'}])}}]},true);
+    };
+
+    const loadData = async () => {
+        loading.style.display = 'block';
+        error.style.display = 'none';
+        try {
+            const params = new URLSearchParams();
+            if (monthInput.value) params.set('month', monthInput.value);
+            if (dayInput.value) params.set('day', dayInput.value);
+            const url = '/api/dashboard-data/' + (params.toString() ? `?${params.toString()}` : '');
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`请求失败: ${response.status}`);
+            const data = await response.json();
+            loading.style.display = 'none';
+            renderAll(data);
+        } catch (err) {
+            loading.style.display = 'none';
+            error.style.display = 'block';
+            error.textContent = '真实数据加载失败，请检查接口或数据库字段。';
+            console.error(err);
+        }
+    };
+
+    initCharts();
+    loadData();
+
+    // 监听窗口缩放，自适应所有图表
+    window.addEventListener('resize', () => {
+        Object.values(charts).forEach(chart => chart.resize());
+        if (predictedChart) predictedChart.resize(); // 独立图表也需要缩放
+    });
+
+    let timer = null;
+    const triggerReload = () => {
+        clearTimeout(timer);
+        timer = setTimeout(loadData, 250);
+    };
+    monthInput.addEventListener('change', triggerReload);
+    dayInput.addEventListener('change', triggerReload);
+});
 </script>
 </body>
 </html>

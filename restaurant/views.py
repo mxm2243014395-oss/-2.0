@@ -1,9 +1,9 @@
-from collections import defaultdict
 from datetime import datetime, time as dt_time, timedelta
-from decimal import Decimal
 import time
 import traceback
 
+import numpy as np
+import pandas as pd
 from django import forms
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
@@ -12,14 +12,17 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Count, Sum
-from django.db.models.functions import ExtractHour, TruncDate
+from django.db.models.functions import TruncDate, ExtractHour
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.timezone import make_aware
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_val_predict
+from sklearn.metrics import mean_absolute_percentage_error
 
 from .models import Dish, Order
-
+from django.db.models import F
 
 def _parse_month_param(value):
     if not value:
@@ -70,81 +73,185 @@ def _query_signature(params_dict):
     return '&'.join(f'{k}={v}' for k, v in items)
 
 
+def get_tomorrow_predicted_orders():
+    orders = list(Order.objects.order_by('order_time').values_list('order_time', flat=True))
+    if len(orders) < 2:
+        return 0.0, None, None, None
+
+    first_day = timezone.localtime(orders[0]).date()
+    day_to_total = {}
+    for dt in orders:
+        d = timezone.localtime(dt).date()
+        day_to_total[d] = day_to_total.get(d, 0) + 1
+
+    sorted_days = sorted(day_to_total.keys())
+    if len(sorted_days) < 2:
+        return 0.0, None, None, None
+
+    x = np.array([(day - first_day).days for day in sorted_days], dtype=float).reshape(-1, 1)
+    y = np.array([day_to_total[day] for day in sorted_days], dtype=float)
+
+    if len(x) < 2:
+        return 0.0, None, None, None
+
+    model = LinearRegression()
+    model.fit(x, y)
+    y_pred = model.predict(x)
+    try:
+        mape = float(mean_absolute_percentage_error(y, y_pred))
+    except Exception:
+        mape = None
+
+    tomorrow_offset = (timezone.localtime(orders[-1]).date() - first_day).days + 1
+    tomorrow_predicted_orders = float(max(0.0, model.predict(np.array([[tomorrow_offset]], dtype=float))[0]))
+    actual_vs_pred_data = [
+        {
+            'date': day.strftime('%Y-%m-%d'),
+            'actual': int(day_to_total[day]),
+            'predicted': float(y_pred[i]),
+        }
+        for i, day in enumerate(sorted_days)
+    ]
+    predicted_revenue = 0
+    return tomorrow_predicted_orders, mape, actual_vs_pred_data, predicted_revenue
+
+
 @login_required
 def dashboard(request):
     total_orders = Order.objects.count()
     total_amount = Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0
+    avg_order_value = total_amount / total_orders if total_orders > 0 else 0
+
     total_amount_wan = total_amount / 10000 if total_amount else 0
     avg_order_value = total_amount / total_orders if total_orders > 0 else 0
 
+    # 1. 动态时间锚点 (解决测试数据时间断层)
+    latest_order = Order.objects.order_by('-order_time').first()
+    anchor_date = timezone.localtime(latest_order.order_time).date() if latest_order else timezone.now().date()
+    
     month_param = request.GET.get('month')
     day_param = request.GET.get('day')
-    trend_start, trend_end, heatmap_day, _ = _dashboard_range_from_params(month_param, day_param)
+    if day_param:
+        target_date = datetime.strptime(day_param, '%Y-%m-%d').date()
+    elif month_param:
+        target_date = datetime.strptime(month_param + '-01', '%Y-%m-%d').date()
+    else:
+        target_date = anchor_date
 
-    if trend_start is None or trend_end is None:
-        now = timezone.now()
-        trend_start = now - timedelta(days=29)
-        trend_end = now
-        heatmap_day = now
+    # 2. 基础图表统计
+    trend_start_date = target_date - timedelta(days=29)
+    aware_trend_start = make_aware(datetime.combine(trend_start_date, dt_time.min))
+    aware_target_end = make_aware(datetime.combine(target_date, dt_time.max))
+    aware_target_start = make_aware(datetime.combine(target_date, dt_time.min))
 
-    daily_rows = (
-        Order.objects.filter(order_time__gte=trend_start, order_time__lte=trend_end)
-        .annotate(order_day=TruncDate('order_time'))
-        .values('order_day')
-        .annotate(count=Count('id'))
-        .order_by('order_day')
-    )
-    daily_map = {row['order_day']: row['count'] for row in daily_rows}
-    daily_orders = []
-    current_date = timezone.localtime(trend_start).date()
-    end_date = timezone.localtime(trend_end).date()
-    while current_date <= end_date:
-        daily_orders.append({'date': current_date.strftime('%Y-%m-%d'), 'count': daily_map.get(current_date, 0)})
-        current_date += timedelta(days=1)
+    # 30天趋势 (变量名叫 daily_orders)
+    trend_dts = Order.objects.filter(order_time__gte=aware_trend_start, order_time__lte=aware_target_end).values_list('order_time', flat=True)
+    daily_map = {}
+    for dt in trend_dts:
+        d_str = timezone.localtime(dt).strftime('%Y-%m-%d')
+        daily_map[d_str] = daily_map.get(d_str, 0) + 1
+    daily_orders = [{'date': (trend_start_date + timedelta(days=i)).strftime('%Y-%m-%d'), 'count': daily_map.get((trend_start_date + timedelta(days=i)).strftime('%Y-%m-%d'), 0)} for i in range(30)]
 
-    hourly_orders = [{'hour': f'{h:02d}:00', 'count': 0} for h in range(24)]
-    if heatmap_day:
-        heat_start = _aware_start_of_day(heatmap_day)
-        heat_end = _aware_end_of_day(heatmap_day)
-        hourly_rows = (
-            Order.objects.filter(order_time__gte=heat_start, order_time__lte=heat_end)
-            .annotate(order_hour=ExtractHour('order_time'))
-            .values('order_hour')
-            .annotate(count=Count('id'))
-            .order_by('order_hour')
-        )
-        hourly_map = {row['order_hour']: row['count'] for row in hourly_rows if row['order_hour'] is not None}
-        hourly_orders = [{'hour': f'{h:02d}:00', 'count': hourly_map.get(h, 0)} for h in range(24)]
+    # 24小时分布
+    hourly_dts = Order.objects.filter(order_time__gte=aware_target_start, order_time__lte=aware_target_end).values_list('order_time', flat=True)
+    hourly_map = {}
+    for dt in hourly_dts:
+        h = timezone.localtime(dt).hour
+        hourly_map[h] = hourly_map.get(h, 0) + 1
+    hourly_orders = [{'hour': f'{h:02d}:00', 'count': hourly_map.get(h, 0)} for h in range(24)]
 
+    # 滞销/热销菜品
     all_dishes = list(Dish.objects.values('name'))
-    dish_sales_map = {
-        item['item_name']: int(item['total_sales'] or 0)
-        for item in Order.objects.values('item_name').annotate(total_sales=Sum('quantity'))
-        if item['item_name']
-    }
-    unsold_dishes = sorted(
-        ({'name': dish['name'], 'value': int(dish_sales_map.get(dish['name'], 0) or 0)} for dish in all_dishes),
-        key=lambda x: (x['value'], x['name'])
-    )[:5]
+    dish_sales_map = {item['item_name']: int(item['total_sales'] or 0) for item in Order.objects.filter(order_time__gte=aware_trend_start, order_time__lte=aware_target_end).values('item_name').annotate(total_sales=Sum('quantity')) if item['item_name']}
+    bottom_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (x['value'], x['name']))[:5]
+    top_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (-x['value'], x['name']))[:5]
 
+    # =========================================================
+    # 🌟 核心板块：机器学习预测 (未来 7 天)
+    # =========================================================
+    ninety_days_ago = target_date - timedelta(days=90)
+    aware_90_start = make_aware(datetime.combine(ninety_days_ago, dt_time.min))
+    
+    historical_dts = Order.objects.filter(order_time__gte=aware_90_start, order_time__lte=aware_target_end).values_list('order_time', flat=True)
+    
+    pred_daily_dict = {}
+    for dt in historical_dts:
+        date_str = timezone.localtime(dt).strftime('%Y-%m-%d')
+        pred_daily_dict[date_str] = pred_daily_dict.get(date_str, 0) + 1
+        
+    predicted_orders = []
+    mape = None
+    tomorrow_predicted_orders = 0
+    prep_list = []
+    
+    if pred_daily_dict:
+        hist_data = [{'date': k, 'count': v} for k, v in pred_daily_dict.items()]
+        df = pd.DataFrame(hist_data)
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
+        
+        df['weekday'] = df['date'].dt.weekday
+        df['is_weekend'] = (df['weekday'] >= 5).astype(int)
+        df['day_index'] = (df['date'] - df['date'].min()).dt.days
+
+        X = df[['day_index', 'weekday', 'is_weekend']]
+        y = df['count']
+
+        model = LinearRegression()
+        if len(y) >= 3:
+            cv_folds = min(5, len(y) - 1)
+            y_pred = cross_val_predict(model, X, y, cv=cv_folds)
+            mape = mean_absolute_percentage_error(y, y_pred) * 100
+
+        model.fit(X, y)
+
+        future_dates = [target_date + timedelta(days=i) for i in range(1, 8)]
+        min_date = df['date'].min()
+        
+        future_day_indices = [(pd.Timestamp(d) - min_date).days for d in future_dates]
+        future_weekdays = [d.weekday() for d in future_dates]
+        future_is_weekends = [1 if wd >= 5 else 0 for wd in future_weekdays]
+
+        future_X = pd.DataFrame({'day_index': future_day_indices, 'weekday': future_weekdays, 'is_weekend': future_is_weekends})
+        predictions = model.predict(future_X)
+
+        weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+        predicted_orders = [{'date': f"{future_dates[i].strftime('%Y-%m-%d')} ({weekdays_cn[future_dates[i].weekday()]})", 'predicted': max(0, int(round(predictions[i])))} for i in range(7)]
+        
+        tomorrow_predicted_orders = predicted_orders[0]['predicted'] if predicted_orders else 0
+
+    # 智能备货单拆解
+    if tomorrow_predicted_orders > 0:
+        total_recent_sales = sum(dish_sales_map.values()) or 1
+        avg_items_per_order = total_recent_sales / (len(trend_dts) or 1)
+        
+        dish_info_map = {d['name']: d['category'] for d in Dish.objects.values('name', 'category')}
+        
+        for dish_name, sales in dish_sales_map.items():
+            ratio = sales / total_recent_sales
+            predicted_qty = int(round(tomorrow_predicted_orders * avg_items_per_order * ratio))
+            if predicted_qty > 0:
+                prep_list.append({
+                    'name': dish_name,
+                    'category': dish_info_map.get(dish_name, '未知'),
+                    'quantity': predicted_qty
+                })
+        prep_list = sorted(prep_list, key=lambda x: x['quantity'], reverse=True)
+
+    # 纯净的 context，绝无 daily_trend！
     context = {
         'total_orders': total_orders,
         'total_amount': total_amount,
         'total_amount_wan': total_amount_wan,
         'daily_orders': daily_orders,
-        'top_dishes': [],
-        'bottom_dishes': unsold_dishes,
+        'top_dishes': top_dishes,
+        'bottom_dishes': bottom_dishes,
         'hourly_orders': hourly_orders,
-        'predicted_orders': [],
-        'mape': None,
-        'ai_suggestion': '',
-        'prep_list': [],
+        'predicted_orders': predicted_orders,
+        'mape': round(mape, 2) if mape is not None else None,
+        'prep_list': prep_list,
         'avg_order_value': avg_order_value,
-        'predicted_revenue': 0,
-        'actual_vs_pred_data': [],
-        'top_predicted_dishes': [],
-        'month': month_param,
-        'day': day_param,
+        'predicted_revenue': tomorrow_predicted_orders * avg_order_value,
     }
     return render(request, 'dashboard.html', context)
 
@@ -453,18 +560,76 @@ class DishForm(forms.ModelForm):
 
 @login_required
 def dish_list(request):
-    dishes_queryset = Dish.objects.only('name', 'category', 'price', 'description').order_by('category', '-price')
+    # 1. 基础查询集和分页器
+    dishes_queryset = Dish.objects.only('name', 'category', 'price', 'current_stock', 'safety_stock', 'description').order_by('category', '-price')
     cache_key = 'dish_list_total_count:all'
     total_count = _cache_count(dishes_queryset, cache_key)
 
     paginator = Paginator(dishes_queryset, 20)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+    
     query_params = request.GET.copy()
     query_params.pop('page', None)
     query_string = query_params.urlencode()
-    return render(request, 'dish_list.html', {'page_obj': page_obj, 'query_string': query_string, 'total_count': total_count})
 
+    # 2. 获取全局销量聚合数据和 AI 预测数据
+    sales_rows = Order.objects.values('item_name').annotate(total_sales=Sum('quantity'))
+    dish_sales_map = {row['item_name']: int(row['total_sales'] or 0) for row in sales_rows if row['item_name']}
+    total_sales_all = sum(dish_sales_map.values())
+    tomorrow_predicted_orders, _, _, _ = get_tomorrow_predicted_orders()
+
+    # =======================================================
+    # 🌟 极致优化点 1：使用 F() 表达式在数据库层直接秒查缺货菜品
+    # =======================================================
+    low_stock_qs = Dish.objects.filter(current_stock__lte=F('safety_stock')).order_by('current_stock')
+    
+    low_stock_dishes = []
+    # 只需要遍历查出来的少数缺货菜品，拼接上历史销量即可
+    for dish in low_stock_qs:
+        low_stock_dishes.append({
+            'name': dish.name,
+            'current_stock': dish.current_stock,
+            'safety_stock': dish.safety_stock,
+            'sold': dish_sales_map.get(dish.name, 0),
+        })
+
+    # =======================================================
+    # 🌟 优化点 2：单独计算 AI 采购单
+    # =======================================================
+    purchase_list = []
+    for dish in dishes_queryset:
+        sold = dish_sales_map.get(dish.name, 0)
+        
+        # 计算预估消耗
+        if total_sales_all > 0 and tomorrow_predicted_orders > 0:
+            expected_consumption = tomorrow_predicted_orders * (sold / total_sales_all)
+        else:
+            expected_consumption = 0
+
+        # 核心进销存公式：建议采购量 = 预估消耗 + 安全库存 - 现有库存
+        suggested_purchase = expected_consumption + dish.safety_stock - dish.current_stock
+        
+        if suggested_purchase > 0:
+            purchase_list.append({
+                'name': dish.name,
+                'current_stock': dish.current_stock,
+                'safety_stock': dish.safety_stock,
+                'history_sales': sold,
+                'expected_consumption': round(expected_consumption, 1), # 保留1位小数更美观
+                'suggested_purchase': int(round(suggested_purchase)),   # 采购量通常需要整数
+            })
+
+    # 按建议采购量倒序排列，优先展示最急需进货的菜品
+    purchase_list = sorted(purchase_list, key=lambda x: (x['suggested_purchase'], x['current_stock'], x['name']), reverse=True)
+
+    return render(request, 'dish_list.html', {
+        'page_obj': page_obj,
+        'query_string': query_string,
+        'total_count': total_count,
+        'low_stock_dishes': low_stock_dishes,
+        'purchase_list': purchase_list,
+    })
 
 @login_required
 def dish_create(request):

@@ -8,6 +8,10 @@ class Dish(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="菜品单价", db_index=True)
     description = models.TextField(blank=True, null=True, verbose_name="菜品简介")
 
+# 👇 新增的两个核心库存字段
+    current_stock = models.IntegerField(default=50, verbose_name="当前库存")
+    safety_stock = models.IntegerField(default=15, verbose_name="安全库存阈值")
+    
     class Meta:
         verbose_name = "菜品"
         verbose_name_plural = "菜品列表"

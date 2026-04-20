@@ -1,63 +1,200 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>菜品管理 - 智慧餐厅</title>
+    <title>菜品管理 - 智慧餐厅管理系统</title>
     <style>
-        :root{--bg:#F5F5F7;--sidebar-bg:#F5F5F7;--sidebar-border:#E5E5E7;--text:#1D1D1F;--sub:#6E6E73;--menu-hover:#E8E8ED;--card:#fff;--line:rgba(0,0,0,.06);--shadow:0 4px 6px -1px rgba(0,0,0,.05)}
-        *{box-sizing:border-box} body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility} a{text-decoration:none}
-        .app-wrapper{display:flex;min-height:100vh;width:100%}.sidebar{width:260px;flex-shrink:0;background:var(--sidebar-bg);border-right:1px solid var(--sidebar-border);padding:18px 14px}.shell{display:flex;flex-direction:column;height:100%}.logo{height:72px;display:flex;align-items:center;padding:0 16px;font-size:18px;font-weight:700;letter-spacing:-.02em;color:var(--text)}.logo .icon{margin-right:10px;font-size:20px}.menu{display:flex;flex-direction:column;gap:8px;padding:8px 4px 0}.item{display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:12px;color:var(--text);font-size:15px;font-weight:500;transition:background-color .18s ease,transform .18s ease}.item:hover,.item.active{background:#000;color:#fff;transform:translateX(1px)}.item .icon{width:20px;text-align:center;flex-shrink:0}.main{flex:1;min-width:0;padding:24px 28px 28px}.container{max-width:1600px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:center;padding:8px 4px 14px;margin-bottom:18px}.head h1{margin:0;font-size:30px;letter-spacing:-.03em;font-weight:700;color:var(--text)}.card{background:#fff;border:none;border-radius:16px;box-shadow:var(--shadow);overflow:hidden}.toolbar{padding:18px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}.toolbar span{color:var(--sub);font-size:14px}.btn-new{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;background:#000;color:#fff;font-size:14px;font-weight:600;transition:.18s ease;box-shadow:0 10px 22px rgba(0,0,0,.12)}.btn-new:hover{transform:scale(1.03);color:#fff;opacity:.94}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px;padding:20px}.dish{background:#fff;border-radius:20px;box-shadow:var(--shadow);padding:18px;transition:transform .2s ease,box-shadow .2s ease;border:1px solid rgba(0,0,0,.03)}.dish:hover{transform:scale(1.02);box-shadow:0 10px 26px rgba(0,0,0,.08)}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.name{font-size:18px;font-weight:700;letter-spacing:-.02em;margin:0}.category{display:inline-flex;margin-top:10px;padding:5px 10px;border-radius:999px;background:#F1F5F9;color:#334155;font-size:12px;font-weight:600}.desc{margin-top:12px;color:var(--sub);font-size:14px;line-height:1.6;min-height:44px}.bottom{display:flex;justify-content:space-between;align-items:center;margin-top:16px}.price{font-size:22px;font-weight:800;color:#000;letter-spacing:-.03em}.actions{display:flex;gap:8px}.btn-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;background:transparent;border-radius:999px;color:#6E6E73;transition:.15s ease}.btn-icon:hover{background:rgba(0,0,0,.05);color:#1D1D1F;transform:translateY(-1px)}.btn-icon svg{width:16px;height:16px}.empty{padding:60px 20px;text-align:center;color:#8e8e93}.pagination-shell{display:flex;justify-content:center;align-items:center;gap:12px;padding:18px 20px 22px}.pagination{display:flex;gap:12px}.pagination .page-item{margin:0}.pagination .page-link{border:none;color:var(--text);border-radius:999px;padding:10px 16px;background:#f2f2f7;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}.pagination .page-link:hover{background:#e9e9ee;color:#000}.pagination .page-item.disabled .page-link{color:#b0b0b5;background:#f5f5f7}.pagination .page-item.active .page-link{background:#000;color:#fff}
-        @media (max-width:1100px){.sidebar{display:none}.main{padding-left:18px;padding-right:18px}}
+        /* 复用大屏的苹果风现代 CSS 变量 */
+        :root{--bg:#F5F5F7;--sidebar-bg:#F5F5F7;--sidebar-border:#E5E5E7;--text:#1D1D1F;--sub:#6E6E73;--menu-hover:#E8E8ED;--card:#fff;--line:rgba(0,0,0,.06);--shadow:0 4px 6px -1px rgba(0,0,0,.05); --red:#FF3B30; --green:#34C759; --blue:#007AFF;}
+        *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+        .app{display:flex;min-height:100vh;width:100%}.sidebar{width:260px;flex-shrink:0;background:var(--sidebar-bg);border-right:1px solid var(--sidebar-border);padding:18px 14px}.shell{display:flex;flex-direction:column;height:100%}.logo{height:72px;display:flex;align-items:center;padding:0 16px;font-size:18px;font-weight:700;letter-spacing:-.02em;color:var(--text)}.logo .icon{margin-right:10px;font-size:20px}.menu{display:flex;flex-direction:column;gap:8px;padding:8px 4px 0}.item{display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:12px;color:var(--text);font-size:15px;font-weight:500;transition:background-color .18s ease,transform .18s ease}.item:hover,.item.active{background:#000;color:#fff;transform:translateX(1px)}.item .icon{width:20px;text-align:center;flex-shrink:0}.main{flex:1;min-width:0;padding:24px 28px 28px}.container{max-width:1600px;margin:0 auto}
+        
+        .head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;}
+        .head h1{margin:0;font-size:30px;letter-spacing:-.03em;font-weight:700}
+        .btn-primary{background:var(--text);color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:opacity 0.2s; border:none; cursor:pointer;}
+        .btn-primary:hover{opacity:0.8}
+        
+        /* 🚨 预警框样式 */
+        .alert-box {padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; display: flex; flex-direction: column; gap: 12px;}
+        .alert-box.danger {background: #FFF0F0; border: 1px solid #FFD6D6;}
+        .alert-box.success {background: #F2FBEE; border: 1px solid #D4EFC3; color: #2B7A0B; font-weight: 500;}
+        .alert-title {font-size: 16px; font-weight: bold; color: var(--red); display: flex; align-items: center; gap: 8px;}
+        .alert-tags {display: flex; flex-wrap: wrap; gap: 10px;}
+        .alert-tag {background: #fff; border: 1px solid #FFD6D6; padding: 6px 12px; border-radius: 8px; font-size: 14px; box-shadow: 0 2px 4px rgba(255,59,48,0.05); display: flex; align-items: center; gap: 8px;}
+        .stock-num {color: var(--red); font-weight: bold; font-size: 15px;}
+        
+        /* 表格容器样式 */
+        .card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:24px; margin-bottom: 24px;}
+        .card h3 {margin: 0 0 16px 0; font-size: 18px;}
+        .data-table{width:100%;border-collapse:collapse;text-align:left;}
+        .data-table th{padding:12px 16px;background:#F9F9FB;color:var(--sub);font-size:13px;font-weight:600;border-bottom:1px solid var(--line)}
+        .data-table td{padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px;color:var(--text)}
+        .data-table tr:hover td{background:#FAFAFC}
+        .data-table tr:last-child td{border-bottom:none}
+        
+        /* 文本颜色特效 */
+        .text-red {color: var(--red); font-weight: bold;}
+        .text-blue {color: var(--blue); font-weight: bold;}
+        
+        /* 操作按钮 */
+        .action-link {color: var(--blue); text-decoration: none; font-weight: 500; margin-right: 12px;}
+        .action-link.delete {color: var(--red);}
+        .action-link:hover {text-decoration: underline;}
+        
+        /* 分页器 */
+        .pagination {display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 20px; font-size: 14px; color: var(--sub);}
+        .pagination a {padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; color: var(--text); transition: background 0.2s;}
+        .pagination a:hover {background: #F2F2F7;}
+        .pagination .current {padding: 6px 12px; background: var(--text); color: #fff; border-radius: 6px; font-weight: 600;}
     </style>
 </head>
 <body>
-<div class="app-wrapper">
+<div class="app">
     <aside class="sidebar">
         <div class="shell">
             <div class="logo"><span class="icon">🍽️</span> 智慧餐厅</div>
             <nav class="menu">
-                <a href="{% url 'dashboard' %}" class="item {% if request.path == '/dashboard/' or request.path == '/' %}active{% endif %}"><span class="icon">📊</span> 运营大屏</a>
-                <a href="{% url 'order_list' %}" class="item {% if request.path == '/orders/' %}active{% endif %}"><span class="icon">📋</span> 订单管理</a>
-                <a href="{% url 'dish_list' %}" class="item {% if request.path == '/dishes/' %}active{% endif %}"><span class="icon">🍲</span> 菜品管理</a>
-                <a href="{% url 'user_list' %}" class="item {% if request.path == '/users/' or request.path == '/user_list/' %}active{% endif %}"><span class="icon">👥</span> 员工账号管理</a>
+                <a href="{% url 'dashboard' %}" class="item"><span class="icon">📊</span> 运营大屏</a>
+                <a href="{% url 'order_list' %}" class="item"><span class="icon">📋</span> 订单管理</a>
+                <a href="{% url 'dish_list' %}" class="item active"><span class="icon">🍲</span> 菜品管理</a>
+                <a href="{% url 'user_list' %}" class="item"><span class="icon">👥</span> 员工账号管理</a>
             </nav>
         </div>
     </aside>
+    
     <main class="main">
         <div class="container">
-            <div class="head"><h1>菜品管理</h1></div>
-            <div class="card">
-                <div class="toolbar"><span>共计找到 <b>{{ total_count }}</b> 道菜品</span><a href="{% url 'dish_create' %}" class="btn-new">＋ 新增菜品</a></div>
-                {% if page_obj %}
-                <div class="grid">
-                    {% for dish in page_obj %}
-                    <div class="dish">
-                        <div class="top">
-                            <div>
-                                <h3 class="name">{{ dish.name }}</h3>
-                                <span class="category">{{ dish.category }}</span>
-                            </div>
-                            <div class="actions">
-                                <a href="{% url 'dish_edit' dish.id %}" class="btn-icon" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></a>
-                                <form action="{% url 'dish_delete' dish.id %}" method="POST" onsubmit="return confirm('确定要删除菜品 {{ dish.name }} 吗？');">{% csrf_token %}<button type="submit" class="btn-icon" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg></button></form>
-                            </div>
-                        </div>
-                        <div class="desc">{{ dish.description|default:"暂无简介" }}</div>
-                        <div class="bottom"><div class="price-wrap"><span class="price-label">菜品价格</span><div class="price">¥ {{ dish.price|floatformat:2 }}</div></div></div>
+            <div class="head">
+                <h1>菜品与库存管理</h1>
+                <a href="{% url 'dish_create' %}" class="btn-primary">➕ 新增菜品</a>
+            </div>
+
+            {% if low_stock_dishes %}
+            <div class="alert-box danger">
+                <div class="alert-title">🚨 紧急预警：以下菜品库存已低于安全线，请尽快补货！</div>
+                <div class="alert-tags">
+                    {% for item in low_stock_dishes %}
+                    <div class="alert-tag">
+                        <strong>{{ item.name }}</strong>
+                        <span style="color: var(--sub); font-size: 13px;">
+                            剩余: <span class="stock-num">{{ item.current_stock }}</span> 份 
+                            (安全线: {{ item.safety_stock }})
+                        </span>
                     </div>
                     {% endfor %}
                 </div>
-                {% else %}
-                <div class="empty">暂无菜品数据</div>
-                {% endif %}
-                <div class="pagination-shell">
-                    <ul class="pagination mb-0">
-                        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">{% if page_obj.has_previous %}<a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">上一页</a>{% else %}<span class="page-link">上一页</span>{% endif %}</li>
-                        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">{% if page_obj.has_next %}<a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">下一页</a>{% else %}<span class="page-link">下一页</span>{% endif %}</li>
-                    </ul>
-                </div>
             </div>
+            {% else %}
+            <div class="alert-box success">
+                ✅ 完美！当前所有菜品库存均处于健康状态。
+            </div>
+            {% endif %}
+
+            {% if purchase_list %}
+            <div class="card">
+                <h3>🛒 AI 明日自动采购建议单</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>菜品名称</th>
+                            <th>当前库存</th>
+                            <th>安全阈值</th>
+                            <th>明日预估消耗</th>
+                            <th style="text-align: right;">AI 建议补货量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in purchase_list %}
+                        <tr>
+                            <td style="font-weight: 500;">{{ item.name }}</td>
+                            <td>
+                                {% if item.current_stock <= item.safety_stock %}
+                                    <span class="text-red">{{ item.current_stock }} 份</span>
+                                {% else %}
+                                    {{ item.current_stock }} 份
+                                {% endif %}
+                            </td>
+                            <td style="color: var(--sub);">{{ item.safety_stock }} 份</td>
+                            <td>{{ item.expected_consumption }} 份</td>
+                            <td style="text-align: right; font-size: 16px;" class="text-blue">
+                                + {{ item.suggested_purchase }} 份
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            <div class="card">
+                <h3>全部菜品总览</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>菜品名称</th>
+                            <th>分类</th>
+                            <th>单价</th>
+                            <th>当前库存</th>
+                            <th>安全阈值</th>
+                            <th>简介</th>
+                            <th style="text-align: right;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dish in page_obj %}
+                        <tr>
+                            <td style="font-weight: 500;">{{ dish.name }}</td>
+                            <td><span style="background: #F2F2F7; padding: 4px 10px; border-radius: 6px; font-size: 12px;">{{ dish.category }}</span></td>
+                            <td>¥ {{ dish.price }}</td>
+                            <td>
+                                {% if dish.current_stock <= dish.safety_stock %}
+                                    <span class="text-red" title="低于安全库存！">{{ dish.current_stock }} 份 ⚠️</span>
+                                {% else %}
+                                    {{ dish.current_stock }} 份
+                                {% endif %}
+                            </td>
+                            <td style="color: var(--sub);">{{ dish.safety_stock }} 份</td>
+                            <td style="color: var(--sub); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {{ dish.description|default:"-" }}
+                            </td>
+                            <td style="text-align: right;">
+                                <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>
+                                <form action="{% url 'dish_delete' dish.id %}" method="POST" style="display:inline;" onsubmit="return confirm('确定要删除《{{ dish.name }}》吗？');">
+                                    {% csrf_token %}
+                                    <button type="submit" style="background:none; border:none; padding:0; cursor:pointer;" class="action-link delete">删除</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px; color: var(--sub);">暂无菜品数据，请点击右上角新增</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {% if page_obj.has_other_pages %}
+                <div class="pagination">
+                    <span>共 {{ total_count|default:page_obj.paginator.count }} 道菜品</span>
+                    <div>
+                        {% if page_obj.has_previous %}
+                            <a href="?page=1{% if query_string %}&{{ query_string }}{% endif %}">首页</a>
+                            <a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">上一页</a>
+                        {% endif %}
+                        
+                        <span class="current">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span>
+
+                        {% if page_obj.has_next %}
+                            <a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">下一页</a>
+                            <a href="?page={{ page_obj.paginator.num_pages }}{% if query_string %}&{{ query_string }}{% endif %}">末页</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
         </div>
     </main>
 </div>
