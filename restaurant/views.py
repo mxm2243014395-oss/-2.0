@@ -691,6 +691,11 @@ def dish_edit(request, dish_id):
 
 @login_required
 def dish_delete(request, dish_id):
+    # 后端强制拦截：如果不是店长（超级管理员），直接重定向并报错
+    if not request.user.is_superuser:
+        messages.error(request, "对不起，您没有删除菜品的权限！")
+        return redirect('/dish_list/')
+    
     dish = get_object_or_404(Dish, id=dish_id)
     if request.method == 'POST':
         dish.delete()
@@ -723,6 +728,10 @@ def register(request):
 
 @login_required
 def user_list(request):
+    # 新增拦截逻辑：非店长访问直接重定向回大屏
+    if not request.user.is_superuser:
+        return redirect('dashboard') 
+
     users = User.objects.all().order_by('-date_joined')
     paginator = Paginator(users, 15)
     page_number = request.GET.get('page', 1)

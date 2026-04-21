@@ -53,7 +53,7 @@
                 <a href="{% url 'dashboard' %}" class="item {% if request.path == '/dashboard/' or request.path == '/' %}active{% endif %}"><span class="icon">📊</span> 运营大屏</a>
                 <a href="{% url 'order_list' %}" class="item {% if request.path == '/orders/' %}active{% endif %}"><span class="icon">📋</span> 订单管理</a>
                 <a href="{% url 'dish_list' %}" class="item {% if request.path == '/dishes/' %}active{% endif %}"><span class="icon">🍲</span> 菜品管理</a>
-                <a href="{% url 'user_list' %}" class="item {% if request.path == '/users/' or request.path == '/user_list/' %}active{% endif %}"><span class="icon">👥</span> 员工账号管理</a>
+                <a href="{% url 'user_list' %}" class="item {% if request.path == '/users/' or request.path == '/user_list/' %}active{% endif %}"><span class="icon">👥</span> 员工账号管理</a>           
             </nav>
         </div>
     </aside>
@@ -112,16 +112,16 @@
                 </div>
                 <div id="predicted-orders-chart" style="width: 100%; height: 350px;"></div>
             </div>
-
-            <div id="previewModal" class="modal-overlay">
-                <div class="modal-content">
-                    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:15px;">
+            {% if user.is_superuser %}
+            <div id="previewModal" class="modal-overlay">      
+                <div class="modal-content">                  
+                    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:15px;">                                         
                         <h2 style="margin:0;">🛒 明日后厨精准备货单</h2>
                         <div style="display:flex; gap:10px;">
                             <button onclick="window.print()" style="background: var(--green); border:none; padding:8px 16px; border-radius:6px; color:#fff; font-weight:bold; cursor:pointer;">🖨️ 确认打印</button>
                             <button onclick="closeModal()" style="background: #eee; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">关闭</button>
                         </div>
-                    </div>
+                    </div>                 
                     {% if purchase_list %}
                     <table class="preview-table">
                         <thead>
@@ -148,7 +148,7 @@
                     {% endif %}
                 </div>
             </div>
-
+           {% endif %}
         </div>
     </main>
 </div>
@@ -202,7 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 tooltip: { trigger: 'axis' },
                 legend: { data: ['历史真实订单', '模型拟合线', '未来7天预测'], bottom: 0, textStyle: { color: '#6E6E73' } },
                 grid: { left: '3%', right: '3%', top: '12%', bottom: '15%', containLabel: true },
-                xAxis: { type: 'category', data: allDates,  boundaryGap: true, axisTick: {alignWithLabel: true},axisLabel: { color: '#6E6E73', rotate: 15 } },
+                xAxis: { type: 'category', data: allDates,  boundaryGap: true, 
+                axisTick: {alignWithLabel: true},axisLabel: { color: '#6E6E73', rotate: 15 } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#EFEFF4' } }, axisLabel: { color: '#6E6E73' } },
                 series: [
                     { name: '历史真实订单', data: actualValues, type: 'line', smooth: true, itemStyle: { color: '#007AFF' }, areaStyle: { color: 'rgba(0,122,255,0.1)' } },

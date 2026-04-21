@@ -92,7 +92,7 @@
             </div>
             {% endif %}
 
-            {% if purchase_list %}
+            {% if user.is_superuser and purchase_list %}
             <div class="card">
                 <h3>🛒 AI 明日自动采购建议单</h3>
                 <table class="data-table">
