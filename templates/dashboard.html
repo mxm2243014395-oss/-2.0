@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tooltip: { trigger: 'axis' },
                 legend: { data: ['历史真实订单', '模型拟合线', '未来7天预测'], bottom: 0, textStyle: { color: '#6E6E73' } },
                 grid: { left: '3%', right: '3%', top: '12%', bottom: '15%', containLabel: true },
-                xAxis: { type: 'category', data: allDates, axisLabel: { color: '#6E6E73', rotate: 15 } },
+                xAxis: { type: 'category', data: allDates,  boundaryGap: true, axisTick: {alignWithLabel: true},axisLabel: { color: '#6E6E73', rotate: 15 } },
                 yAxis: { type: 'value', splitLine: { lineStyle: { color: '#EFEFF4' } }, axisLabel: { color: '#6E6E73' } },
                 series: [
                     { name: '历史真实订单', data: actualValues, type: 'line', smooth: true, itemStyle: { color: '#007AFF' }, areaStyle: { color: 'rgba(0,122,255,0.1)' } },
