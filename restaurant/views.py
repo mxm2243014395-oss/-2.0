@@ -24,10 +24,20 @@ from sklearn.metrics import mean_absolute_percentage_error
 from .models import Dish, Order
 
 # 顶部新增引入
+from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+# 引入自动寻优算法库
+from pmdarima import auto_arima
 import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 warnings.simplefilter('ignore', ConvergenceWarning) # 忽略底层计算的冗余警告
+
+from django.contrib.auth.decorators import user_passes_test
+from django.contrib import messages
+
+# 定义一个检查是否为店长（超级用户）的函数
+def is_manager(user):
+    return user.is_superuser
 
 def _parse_month_param(value):
     if not value:
@@ -74,58 +84,97 @@ def _query_signature(params_dict):
 
 def get_tomorrow_predicted_orders():
     orders = list(Order.objects.order_by('order_time').values_list('order_time', flat=True))
-    if len(orders) < 2:
-        return 0.0, None, None, None
+    
+    # Holt-Winters 模型也需要一定的数据量来进行平滑计算，设定至少需要 14 天
+    if len(orders) < 14:
+        return 0.0, None, None, 0
 
-    first_day = timezone.localtime(orders[0]).date()
     day_to_total = {}
     for dt in orders:
         d = timezone.localtime(dt).date()
         day_to_total[d] = day_to_total.get(d, 0) + 1
 
-    sorted_days = sorted(day_to_total.keys())
-    if len(sorted_days) < 2:
-        return 0.0, None, None, None
+    # 1. 构建连续的时间序列（将没有营业/没有订单的日期自动填充为 0）
+    df = pd.DataFrame([{'date': k, 'count': v} for k, v in day_to_total.items()])
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    df.sort_index(inplace=True)
 
-    x = np.array([(day - first_day).days for day in sorted_days], dtype=float).reshape(-1, 1)
-    y = np.array([day_to_total[day] for day in sorted_days], dtype=float)
+    idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
+    df = df.reindex(idx, fill_value=0)
+    y = df['count'].astype(float)
 
-    if len(x) < 2:
-        return 0.0, None, None, None
+    if len(y) < 14:
+        return 0.0, None, None, 0
 
-    model = LinearRegression()
-    model.fit(x, y)
-    y_pred = model.predict(x)
     try:
-        mape = float(mean_absolute_percentage_error(y, y_pred))
-    except Exception:
-        mape = None
+        # 2. 构建并训练 Holt-Winters 三次指数平滑模型
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
+        
+        model = ExponentialSmoothing(
+            y,
+            trend='add',
+            seasonal='add',
+            seasonal_periods=7,
+            initialization_method="estimated"
+        )
+        fit_model = model.fit()
 
-    tomorrow_offset = (timezone.localtime(orders[-1]).date() - first_day).days + 1
-    tomorrow_predicted_orders = float(max(0.0, model.predict(np.array([[tomorrow_offset]], dtype=float))[0]))
-    actual_vs_pred_data = [
-        {
-            'date': day.strftime('%Y-%m-%d'),
-            'actual': int(day_to_total[day]),
-            'predicted': float(y_pred[i]),
-        }
-        for i, day in enumerate(sorted_days)
-    ]
+        # 3. 提取历史拟合数据
+        historical_fitted = fit_model.fittedvalues
+
+        # 4. 计算 MAPE 误差率（过滤掉实际销量为0的天数，防止除以0报错）
+        valid_idx = y > 0
+        if valid_idx.any():
+            mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100)
+        else:
+            mape = None
+
+        # 5. 预测明天的单量 (步长 1)
+        forecast = fit_model.forecast(1)
+        tomorrow_predicted_orders = float(max(0.0, forecast.iloc[0]))
+
+        # 6. 组装历史对比数据
+        actual_vs_pred_data = [
+            {
+                'date': date.strftime('%Y-%m-%d'),
+                'actual': int(actual_val),
+                'predicted': float(max(0.0, predicted_val)),
+            }
+            for date, actual_val, predicted_val in zip(y.index, y, historical_fitted)
+        ]
+
+    except Exception as e:
+        print(f"Holt-Winters 模型在计算明日备货单量时失败: {e}")
+        return 0.0, None, None, 0
+
     predicted_revenue = 0
     return tomorrow_predicted_orders, mape, actual_vs_pred_data, predicted_revenue
 
-
 @login_required
 def dashboard(request):
+    # ==========================================
+    # 🌟 新增：登录后的“流量分发”拦截器
+    # ==========================================
+    if not request.user.is_superuser:
+        # 普通员工登录或试图访问大屏，直接无感跳转到菜品管理
+        return redirect('dish_list')
+        
     # 1. 基础统计
     total_orders = Order.objects.count()
     total_amount = Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0
     total_amount_wan = total_amount / 10000 if total_amount else 0
     avg_order_value = total_amount / total_orders if total_orders > 0 else 0
 
-    # 2. 🌟 确定时间基准：真正的【此时此刻】
-    now = timezone.now()
-    today = now.date()
+    # 👇 把 today 加回来（系统有些地方需要用到现实中的今天）
+    today = timezone.now().date()
+
+    # 2. 🌟 确定时间基准：默认为数据库中最后一天的营业日
+    latest_order = Order.objects.order_by('-order_time').first()
+    if latest_order:
+        default_date = timezone.localtime(latest_order.order_time).date()
+    else:
+        default_date = today
     
     # 获取筛选参数
     month_param = request.GET.get('month')
@@ -135,16 +184,32 @@ def dashboard(request):
     elif month_param:
         target_date = datetime.strptime(month_param + '-01', '%Y-%m-%d').date()
     else:
-        target_date = today
+        target_date = default_date
 
-    # 3. 基础图表统计 (30天趋势)
+    # 🌟 新增：把计算出的最终日期转为字符串，传给前端日历显示
+    target_date_str = target_date.strftime('%Y-%m-%d')
+
+    # ==========================================
+    # 🌟 修复：在此处统一提前定义好所有的时间边界
+    # ==========================================
     trend_start_date = target_date - timedelta(days=29)
     aware_trend_start = make_aware(datetime.combine(trend_start_date, dt_time.min))
+    # 这一天的 00:00:00
+    aware_target_start = make_aware(datetime.combine(target_date, dt_time.min)) 
+    # 这一天的 23:59:59
     aware_target_end = make_aware(datetime.combine(target_date, dt_time.max))
-    
+
+    # 3. 基础图表统计 (30天趋势)
     trend_orders_qs = Order.objects.filter(order_time__gte=aware_trend_start, order_time__lte=aware_target_end)
     trend_dts = trend_orders_qs.values_list('order_time', flat=True)
     
+    # 👇 计算选定日期当天的总营业额 (现在 aware_target_start 已经定义好了，不会再报错了)
+    daily_revenue_agg = Order.objects.filter(
+        order_time__gte=aware_target_start, 
+        order_time__lte=aware_target_end
+    ).aggregate(total=Sum('total_amount'))
+    daily_revenue = daily_revenue_agg['total'] or 0
+
     daily_map = {}
     for dt in trend_dts:
         d_str = timezone.localtime(dt).strftime('%Y-%m-%d')
@@ -152,7 +217,6 @@ def dashboard(request):
     daily_orders = [{'date': (trend_start_date + timedelta(days=i)).strftime('%Y-%m-%d'), 'count': daily_map.get((trend_start_date + timedelta(days=i)).strftime('%Y-%m-%d'), 0)} for i in range(30)]
 
     # 4. 24小时分布
-    aware_target_start = make_aware(datetime.combine(target_date, dt_time.min))
     hourly_dts = Order.objects.filter(order_time__gte=aware_target_start, order_time__lte=aware_target_end).values_list('order_time', flat=True)
     hourly_map = {}
     for dt in hourly_dts:
@@ -170,8 +234,8 @@ def dashboard(request):
     bottom_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (x['value'], x['name']))[:5]
     top_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (-x['value'], x['name']))[:5]
 
-  # =========================================================
-    # 🌟 核心板块：时间序列预测 (Holt-Winters 指数平滑)
+    # =========================================================
+    # 🌟 核心板块：时间序列预测 (Holt-Winters 模型)
     # =========================================================
     historical_all = Order.objects.values('order_time')
     pred_daily_dict = {}
@@ -185,26 +249,24 @@ def dashboard(request):
     tomorrow_predicted_orders = 0
     purchase_list = []
     
-    # 🌟 时序模型通常需要更长的数据来捕捉周期，这里设为至少需要 7 天数据
-    if pred_daily_dict and len(pred_daily_dict) >= 7:
+    # 🌟 Holt-Winters 模型需要一定的历史数据来进行平滑计算，这里设定至少需要 14 天数据
+    if pred_daily_dict and len(pred_daily_dict) >= 14:
         # 1. 构建标准的时间序列 DataFrame
         df = pd.DataFrame([{'date': k, 'count': v} for k, v in pred_daily_dict.items()])
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
         df.sort_index(inplace=True)
         
-        # 🌟 关键：餐饮数据可能某天没营业（缺数据），时序模型要求时间必须连续
-        # 因此生成连续的日期索引，并将缺失的日期销量填充为 0
+        # 补全可能缺失的营业日期，填充为 0
         idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
         df = df.reindex(idx, fill_value=0)
         
         y = df['count'].astype(float)
 
-        # 2. 构建 Holt-Winters 时序模型
-        # 餐饮业通常具有 7 天的强周期性 (seasonal_periods=7)
-        # 使用加法模型 (add) 处理趋势和季节性
         try:
-            # 如果数据量大于两周，启用季节性；否则只用简单趋势平滑
+            # 2. 构建 Holt-Winters 三次指数平滑模型
+            from statsmodels.tsa.holtwinters import ExponentialSmoothing
+            
             seasonal_opt = 'add' if len(y) >= 14 else None
             periods_opt = 7 if len(y) >= 14 else None
             
@@ -219,32 +281,35 @@ def dashboard(request):
 
             # 3. 提取历史拟合数据 (用于图表对比和计算误差)
             historical_fitted = fit_model.fittedvalues
+            historical_fitted_list = historical_fitted.tolist()
             
             # 计算全量样本的 MAPE
             # 过滤掉真实值为0的天数以防止除以0的数学错误
             valid_idx = y > 0
             if valid_idx.any():
-                mape = mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100
+                mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100)
             else:
                 mape = 0
 
-            # 组装最近 14 天的历史对比数据供前端展示
+            # 组装最近 14 天的历史对比数据供前端大屏展示
             display_days = min(14, len(y))
             for i in range(len(y) - display_days, len(y)):
                 actual_vs_pred_data.append({
                     'date': y.index[i].strftime('%Y-%m-%d'), 
                     'actual': int(y.iloc[i]),
-                    'predicted': max(0, int(round(historical_fitted.iloc[i])))
+                    'predicted': max(0, int(round(historical_fitted_list[i])))
                 })
 
             # 4. 🌟 预测未来 7 天
             forecast_values = fit_model.forecast(7)
+            forecast_list = forecast_values.tolist()
+            
             weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
             
             for i in range(7):
-                f_date = today + timedelta(days=i+1)
+                f_date = target_date + timedelta(days=i+1)
                 f_weekday = f_date.weekday()
-                p_count = forecast_values.iloc[i]
+                p_count = forecast_list[i]
                 
                 predicted_orders.append({
                     'date': f"{f_date.strftime('%Y-%m-%d')} ({weekdays_cn[f_weekday]})", 
@@ -254,9 +319,8 @@ def dashboard(request):
             tomorrow_predicted_orders = predicted_orders[0]['predicted']
             
         except Exception as e:
-            print(f"时序模型拟合失败，退回初始状态: {e}")
+            print(f"Holt-Winters模型拟合失败，退回初始状态: {e}")
             tomorrow_predicted_orders = 0
-
 
 
     # =======================================================
@@ -306,6 +370,11 @@ def dashboard(request):
         'avg_order_value': avg_order_value,
         'predicted_revenue': tomorrow_predicted_orders * avg_order_value,
         'now': timezone.now(), 
+        
+        # 传入计算出的单日营业额
+        'daily_revenue': daily_revenue,
+        # 传入最新日期供前端展示
+        'target_date_str': target_date_str,
     }
     return render(request, 'dashboard.html', context)
 
@@ -466,6 +535,12 @@ def dashboard_data_api(request):
         aware_trend_start = make_aware(datetime.combine(trend_start_date, dt_time.min))
         aware_target_end = make_aware(datetime.combine(target_date, dt_time.max))
         aware_target_start = make_aware(datetime.combine(target_date, dt_time.min))
+# 👇 1. 新增：计算 API 请求的该天营业额
+        daily_revenue_agg = Order.objects.filter(
+            order_time__gte=aware_target_start, 
+            order_time__lte=aware_target_end
+        ).aggregate(total=Sum('total_amount'))
+        daily_revenue = float(daily_revenue_agg['total'] or 0)
 
         trend_dts = Order.objects.filter(
             order_time__gte=aware_trend_start, 
@@ -507,6 +582,7 @@ def dashboard_data_api(request):
         top_dishes = [{'name': item['item_name'] or '未知', 'value': int(item['value'] or 0)} for item in dish_qs if item['item_name']]
 
         return JsonResponse({
+            'daily_revenue': daily_revenue,
             'daily_trend': daily_trend,
             'hourly_distribution': hourly_distribution,
             'category_revenue': category_revenue,
@@ -523,6 +599,10 @@ def dashboard_data_api(request):
 
 @login_required
 def order_delete(request, order_id):
+    # 硬性拦截：如果不是店长，直接重定向并报错
+    if not request.user.is_superuser:
+        messages.error(request, "【权限拒绝】只有店长可以执行删除操作！")
+        return redirect('order_list')
     order = get_object_or_404(Order, id=order_id)
     if request.method == 'POST':
         order.delete()
@@ -718,8 +798,15 @@ def register(request):
         form = CustomRegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
-            auth_login(request, user)
-            return redirect('dashboard')
+            auth_login(request, user) # 自动登录
+            
+            # ==========================================
+            # 🌟 新增：注册并自动登录后的跳转分发
+            # ==========================================
+            if user.is_superuser:
+                return redirect('dashboard')
+            else:
+                return redirect('dish_list')
     else:
         form = CustomRegisterForm()
 

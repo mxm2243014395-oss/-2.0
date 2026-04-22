@@ -7,12 +7,304 @@
     <title>智慧餐厅管理系统</title>
     <script src="{% static 'js/echarts.min.js' %}" onerror="this.onerror=null;this.src='https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js'"></script>
     <style>
-        :root{--bg:#F5F5F7;--sidebar-bg:#F5F5F7;--sidebar-border:#E5E5E7;--text:#1D1D1F;--sub:#6E6E73;--menu-hover:#E8E8ED;--card:#fff;--line:rgba(0,0,0,.06);--shadow:0 4px 6px -1px rgba(0,0,0,.05); --green:#34C759; --blue:#007AFF;}
-        *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-        .app{display:flex;min-height:100vh;width:100%}.sidebar{width:260px;flex-shrink:0;background:var(--sidebar-bg);border-right:1px solid var(--sidebar-border);padding:18px 14px}.shell{display:flex;flex-direction:column;height:100%}.logo{height:72px;display:flex;align-items:center;padding:0 16px;font-size:18px;font-weight:700;letter-spacing:-.02em;color:var(--text)}.logo .icon{margin-right:10px;font-size:20px}.menu{display:flex;flex-direction:column;gap:8px;padding:8px 4px 0}.item{display:flex;align-items:center;gap:10px;padding:12px 15px;border-radius:12px;color:var(--text);font-size:15px;font-weight:500;transition:background-color .18s ease,transform .18s ease}.item:hover,.item.active{background:#000;color:#fff;transform:translateX(1px)}.item .icon{width:20px;text-align:center;flex-shrink:0}.main{flex:1;min-width:0;padding:24px 28px 28px}.container{max-width:1600px;margin:0 auto}.head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;padding:8px 4px 14px}.head-left{display:flex;flex-direction:column;gap:12px}.head h1{margin:0;font-size:30px;letter-spacing:-.03em;font-weight:700}.filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.filters label{font-size:12px;color:var(--sub);font-weight:600}.filters input{height:38px;border:none;background:#F2F2F7;border-radius:10px;padding:0 12px;font-size:13px;color:var(--text);outline:none;box-shadow:none}.filters input:focus{background:#EBEBF0}.filters .hint{font-size:12px;color:var(--sub)}.account{display:flex;align-items:center;gap:12px;padding:8px 14px 8px 8px;background:rgba(255,255,255,.72);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.7);border-radius:999px;box-shadow:var(--shadow)}.avatar{width:34px;height:34px;border-radius:50%;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}.user{display:flex;flex-direction:column}.user-name{font-size:14px;font-weight:600}.user-role{font-size:12px;color:var(--sub)}.logout{color:#d92d20;text-decoration:none;font-size:14px;font-weight:600}.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:18px}.card{background:var(--card);border-radius:16px;border:none;box-shadow:var(--shadow);padding:22px;text-align:left}.card h2{margin:0;font-size:34px;letter-spacing:-.03em;text-align:center}.card p{margin:8px 0 0;color:var(--sub);font-size:13px;text-align:center}.blue{color:#007AFF}.green{color:#34C759}.orange{color:#FF9500}.purple{color:#AF52DE}.charts{display:grid;grid-template-columns:repeat(12,1fr);gap:18px;margin-bottom:18px}.chart{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:18px;min-width:0}.chart h3{margin:0 0 14px;font-size:16px;letter-spacing:-.02em}.box{width:100%;height:320px}.box.tall{height:360px}.span-12{grid-column:span 12}.span-8{grid-column:span 8}.span-6{grid-column:span 6}.span-4{grid-column:span 4}.span-3{grid-column:span 3}.loading,.error{padding:14px 16px;border-radius:14px;margin-bottom:18px;background:#fff;box-shadow:var(--shadow)}.loading{color:#007AFF}.error{color:#d92d20;display:none}
+        :root {
+    --bg: #F5F5F7;
+    --sidebar-bg: #F5F5F7;
+    --sidebar-border: #E5E5E7;
+    --text: #1D1D1F;
+    --sub: #6E6E73;
+    --menu-hover: #E8E8ED;
+    --card: #fff;
+    --line: rgba(0, 0, 0, .06);
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, .05);
+    --green: #34C759;
+    --blue: #007AFF;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* 布局基础 */
+.app {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+.sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    padding: 18px 14px;
+}
+
+.shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.main {
+    flex: 1;
+    min-width: 0;
+    padding: 24px 28px 28px;
+}
+
+.container {
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* 导航与 Logo */
+.logo {
+    height: 72px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    color: var(--text);
+}
+
+.logo .icon {
+    margin-right: 10px;
+    font-size: 20px;
+}
+
+.menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 4px 0;
+}
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 15px;
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+    transition: background-color .18s ease, transform .18s ease;
+}
+
+.item:hover,
+.item.active {
+    background: #000;
+    color: #fff;
+    transform: translateX(1px);
+}
+
+.item .icon {
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* 头部区域 */
+.head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 18px;
+    padding: 8px 4px 14px;
+}
+
+.head-left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.head h1 {
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: -.03em;
+    font-weight: 700;
+}
+
+/* 筛选器 */
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.filters label {
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 600;
+}
+
+/* 🌟 全新升级的日期选择器样式 */
+.filters input {
+    height: 40px;
+    border: 1px solid rgba(0, 0, 0, 0.08); /* 极细的边框 */
+    background: #ffffff; /* 纯白背景，在灰色大背景中脱颖而出 */
+    border-radius: 10px;
+    padding: 0 14px;
+    font-size: 15px; /* 字体放大 */
+    font-weight: 700; /* 加粗 */
+    color: var(--blue); /* 使用主题蓝，暗示这是一个可点击/选中的核心参数 */
+    outline: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03); /* 淡淡的立体阴影 */
+    transition: all 0.2s ease;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* 鼠标悬浮时的反馈 */
+.filters input:hover {
+    border-color: rgba(0, 122, 255, 0.4);
+    box-shadow: 0 4px 10px rgba(0, 122, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+/* 点击选中时的反馈 */
+.filters input:focus {
+    background: #ffffff;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+.filters .hint {
+    font-size: 13px;
+    color: var(--sub);
+    font-weight: 500;
+}
+
+/* 数据卡片 */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.card {
+    background: var(--card);
+    border-radius: 16px;
+    border: none;
+    box-shadow: var(--shadow);
+    padding: 22px;
+    text-align: left;
+}
+
+.card h2 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: -.03em;
+    text-align: center;
+}
+
+.card p {
+    margin: 8px 0 0;
+    color: var(--sub);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* 图表区域 */
+.charts {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.chart {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+    min-width: 0;
+}
+
+.chart h3 {
+    margin: 0 0 14px;
+    font-size: 16px;
+    letter-spacing: -.02em;
+}
+
+.box {
+    width: 100%;
+    height: 320px;
+}
+
+.box.tall {
+    height: 360px;
+}
+
+/* 网格辅助类 */
+.span-12 { grid-column: span 12; }
+.span-8  { grid-column: span 8; }
+.span-6  { grid-column: span 6; }
+.span-4  { grid-column: span 4; }
+.span-3  { grid-column: span 3; }
+
+/* 状态提示与通用颜色 */
+.loading,
+.error {
+    padding: 14px 16px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+    background: #fff;
+    box-shadow: var(--shadow);
+}
+
+.loading { color: #007AFF; }
+.error { color: #d92d20; display: none; }
+
+.red{color:#FF2D55}
+.blue { color: #007AFF; }
+.green { color: #34C759; }
+.orange { color: #FF9500; }
+.purple { color: #AF52DE; }
+        /* ========================================= */
+        /* 🌟 新增：左侧底部胶囊形用户卡片样式 */
+        /* ========================================= */
+        .sidebar-user-card {
+            display: flex; align-items: center; background: #ffffff;
+            padding: 8px 16px 8px 8px; border-radius: 50px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-top: 30px; 
+            margin-bottom: 10px; margin-left: 4px; margin-right: 4px;
+            gap: 12px; transition: all 0.3s ease;
+        }
+        .sidebar-user-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); transform: translateY(-2px);
+        }
+        .user-avatar {
+            width: 36px; height: 36px; background-color: #000; color: #fff;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; font-size: 16px; flex-shrink: 0;
+        }
+        .user-info { display: flex; flex-direction: column; }
+        .user-name { font-size: 14px; font-weight: 600; color: #333; }
+        .user-role { font-size: 12px; color: #888; margin-top: 2px;}
+        .logout-btn {
+            margin-left: auto; color: #e74c3c; font-weight: bold; font-size: 14px; text-decoration: none;
+        }
+        .logout-btn:hover { color: #c0392b; }
 
         /* ========================================= */
-        /* 🌟 新增：采购单预览弹窗 (Modal) 样式 */
+        /* 🌟 采购单预览弹窗 (Modal) 样式 */
         /* ========================================= */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -32,7 +324,6 @@
         /* 🖨️ 打印机专属样式 */
         /* ========================================= */
         @media print {
-            /* 打印时隐藏大屏的所有内容，包括侧边栏、背景、卡片和弹窗的关闭按钮 */
             .sidebar, .main > .container > *:not(#previewModal), .modal-header button:last-child {
                 display: none !important;
             }
@@ -53,9 +344,26 @@
                 <a href="{% url 'dashboard' %}" class="item {% if request.path == '/dashboard/' or request.path == '/' %}active{% endif %}"><span class="icon">📊</span> 运营大屏</a>
                 <a href="{% url 'order_list' %}" class="item {% if request.path == '/orders/' %}active{% endif %}"><span class="icon">📋</span> 订单管理</a>
                 <a href="{% url 'dish_list' %}" class="item {% if request.path == '/dishes/' %}active{% endif %}"><span class="icon">🍲</span> 菜品管理</a>
-                <a href="{% url 'user_list' %}" class="item {% if request.path == '/users/' or request.path == '/user_list/' %}active{% endif %}"><span class="icon">👥</span> 员工账号管理</a>           
+                <a href="{% url 'user_list' %}" class="item {% if request.path == '/users/' or request.path == '/user_list/' %}active{% endif %}"><span class="icon">👥</span> 员工账号管理</a>          
             </nav>
-        </div>
+
+            <div class="sidebar-user-card">
+                <div class="user-avatar">
+                    {{ request.user.username|make_list|first|upper|default:"店" }}
+                </div>
+                <div class="user-info">
+                    <span class="user-name">{{ request.user.username|default:"店长" }}</span>
+                    <span class="user-role">
+                        {% if user.is_superuser %}
+                            管理员
+                        {% else %}
+                            普通员工
+                        {% endif %}
+                    </span>
+                </div>
+                <a href="{% url 'logout' %}" class="logout-btn">退出</a>
+            </div>
+            </div>
     </aside>
     <main class="main">
         <div class="container">
@@ -63,25 +371,28 @@
                 <div class="head-left">
                     <h1>运营概览</h1>
                     <div class="filters">
-                        <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
                             <label for="month-filter">月份</label>
-                            <input id="month-filter" type="month" value="{{ month|default:'' }}">
+                            <input id="month-filter" type="month" value="{{ target_date_str|slice:':7' }}">
                         </div>
-                        <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
                             <label for="day-filter">日期</label>
-                            <input id="day-filter" type="date" value="{{ day|default:'' }}">
+                            <input id="day-filter" type="date" value="{{ target_date_str }}">
                         </div>
-                        <span class="hint">月份切换趋势图，日期切换热力图</span>
+                        <span class="hint" style="margin-left: 10px;">📅 月份切换趋势图，日期切换热力图</span>
                     </div>
                 </div>
-                <div class="account"><div class="avatar">{{ request.user.username|make_list|first|upper|default:"店" }}</div><div class="user"><span class="user-name">{{ request.user.username|default:"店长" }}</span><span class="user-role">管理员</span></div><a href="{% url 'logout' %}" class="logout">退出</a></div>
-            </div>
+                </div>
 
             <div class="stat-grid">
                 <div class="card"><h2 class="blue">{{ total_orders }}</h2><p>历史总订单数 (单)</p></div>
                 <div class="card"><h2 class="green">¥ {{ total_amount_wan|floatformat:2 }}</h2><p>历史总营业额 (万)</p></div>
                 <div class="card"><h2 class="orange">¥ {{ avg_order_value|floatformat:2 }}</h2><p>平均客单价 (元)</p></div>
                 <div class="card"><h2 class="purple">¥ {{ predicted_revenue|floatformat:2 }}</h2><p>✨ 明日预估营收 (元)</p></div>
+                <div class="card">
+                    <h2 class="red">¥ <span id="daily-revenue-display">{{ daily_revenue|floatformat:2 }}</span></h2>
+                    <p>📅 选定日营业额</p>
+                </div>
             </div>
 
             <div id="dashboard-loading" class="loading">正在加载真实销售数据...</div><div id="dashboard-error" class="error"></div>
@@ -215,6 +526,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.error(e); }
 
     const renderAll = (data) => {
+       
+        if (data.daily_revenue !== undefined) {
+            document.getElementById('daily-revenue-display').innerText = data.daily_revenue.toFixed(2);
+        }
         charts.category.setOption({color:['#007AFF','#AF52DE','#FF2D55','#34C759','#64D2FF'],tooltip:{trigger:'item',formatter:'{b}<br/>营收: ¥ {c}<br/>占比: {d}%'},legend:{bottom:0},series:[{name:'营收占比',type:'pie',radius:['44%','70%'],avoidLabelOverlap:false,itemStyle:{borderRadius:12,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%'},data:data.category_revenue||[]}]},true);
         charts.sale.setOption({color:['#34C759'],tooltip:{trigger:'axis'},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'category',data:(data.time_of_sale_orders||[]).map(x=>x.name),axisLine:{lineStyle:{color:'#D1D1D6'}}},yAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},series:[{type:'bar',data:(data.time_of_sale_orders||[]).map(x=>x.value),itemStyle:{color:'#007AFF',borderRadius:[10,10,0,0]}}]},true);
         charts.top.setOption({color:['#AF52DE'],tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:'3%',right:'4%',bottom:'3%',containLabel:true},xAxis:{type:'value',splitLine:{lineStyle:{color:'#EFEFF4'}}},yAxis:{type:'category',data:(data.top_dishes||[]).map(x=>x.name).reverse(),axisLine:{lineStyle:{color:'#D1D1D6'}}},series:[{type:'bar',data:(data.top_dishes||[]).map(x=>x.value).reverse(),itemStyle:{color:'#AF52DE',borderRadius:[0,10,10,0]}}]},true);

@@ -48,6 +48,30 @@
         .pagination a {padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; color: var(--text); transition: background 0.2s;}
         .pagination a:hover {background: #F2F2F7;}
         .pagination .current {padding: 6px 12px; background: var(--text); color: #fff; border-radius: 6px; font-weight: 600;}
+
+        /* ========================================= */
+        /* 🌟 新增：左侧底部胶囊形用户卡片样式 */
+        /* ========================================= */
+        .sidebar-user-card {
+            display: flex; align-items: center; background: #ffffff;
+            padding: 8px 16px 8px 8px; border-radius: 50px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-top: 30px; margin-bottom: 10px; margin-left: 4px; margin-right: 4px;
+            gap: 12px; transition: all 0.3s ease;
+        }
+        .sidebar-user-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); transform: translateY(-2px);
+        }
+        .user-avatar {
+            width: 36px; height: 36px; background-color: #000; color: #fff;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; font-size: 16px; flex-shrink: 0;
+        }
+        .user-info { display: flex; flex-direction: column; }
+        .user-name { font-size: 14px; font-weight: 600; color: #333; }
+        .user-role { font-size: 12px; color: #888; margin-top: 2px;}
+        .logout-btn { margin-left: auto; color: #e74c3c; font-weight: bold; font-size: 14px; text-decoration: none; }
+        .logout-btn:hover { color: #c0392b; }
     </style>
 </head>
 <body>
@@ -56,11 +80,23 @@
         <div class="shell">
             <div class="logo"><span class="icon">🍽️</span> 智慧餐厅</div>
             <nav class="menu">
+                {% if user.is_superuser %}
                 <a href="{% url 'dashboard' %}" class="item"><span class="icon">📊</span> 运营大屏</a>
+                {% endif %}
                 <a href="{% url 'order_list' %}" class="item"><span class="icon">📋</span> 订单管理</a>
                 <a href="{% url 'dish_list' %}" class="item active"><span class="icon">🍲</span> 菜品管理</a>
+                {% if user.is_superuser %}
                 <a href="{% url 'user_list' %}" class="item"><span class="icon">👥</span> 员工账号管理</a>
+                {% endif %}
             </nav>
+            <div class="sidebar-user-card">
+                <div class="user-avatar">{{ request.user.username|make_list|first|upper|default:"店" }}</div>
+                <div class="user-info">
+                    <span class="user-name">{{ request.user.username|default:"员工" }}</span>
+                    <span class="user-role">{% if user.is_superuser %}管理员{% else %}普通员工{% endif %}</span>
+                </div>
+                <a href="{% url 'logout' %}" class="logout-btn">退出</a>
+            </div>
         </div>
     </aside>
     
@@ -68,7 +104,9 @@
         <div class="container">
             <div class="head">
                 <h1>菜品与库存管理</h1>
+                {% if user.is_superuser %}
                 <a href="{% url 'dish_create' %}" class="btn-primary">➕ 新增菜品</a>
+                {% endif %}
             </div>
 
             {% if low_stock_dishes %}
@@ -98,29 +136,17 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>菜品名称</th>
-                            <th>当前库存</th>
-                            <th>安全阈值</th>
-                            <th>明日预估消耗</th>
-                            <th style="text-align: right;">AI 建议补货量</th>
+                            <th>菜品名称</th><th>当前库存</th><th>安全阈值</th><th>明日预估消耗</th><th style="text-align: right;">AI 建议补货量</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in purchase_list %}
                         <tr>
                             <td style="font-weight: 500;">{{ item.name }}</td>
-                            <td>
-                                {% if item.current_stock <= item.safety_stock %}
-                                    <span class="text-red">{{ item.current_stock }} 份</span>
-                                {% else %}
-                                    {{ item.current_stock }} 份
-                                {% endif %}
-                            </td>
+                            <td>{% if item.current_stock <= item.safety_stock %}<span class="text-red">{{ item.current_stock }} 份</span>{% else %}{{ item.current_stock }} 份{% endif %}</td>
                             <td style="color: var(--sub);">{{ item.safety_stock }} 份</td>
                             <td>{{ item.expected_consumption }} 份</td>
-                            <td style="text-align: right; font-size: 16px;" class="text-blue">
-                                + {{ item.suggested_purchase }} 份
-                            </td>
+                            <td style="text-align: right; font-size: 16px;" class="text-blue">+ {{ item.suggested_purchase }} 份</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -139,7 +165,9 @@
                             <th>当前库存</th>
                             <th>安全阈值</th>
                             <th>简介</th>
+                            {% if user.is_superuser %}
                             <th style="text-align: right;">操作</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -148,17 +176,11 @@
                             <td style="font-weight: 500;">{{ dish.name }}</td>
                             <td><span style="background: #F2F2F7; padding: 4px 10px; border-radius: 6px; font-size: 12px;">{{ dish.category }}</span></td>
                             <td>¥ {{ dish.price }}</td>
-                            <td>
-                                {% if dish.current_stock <= dish.safety_stock %}
-                                    <span class="text-red" title="低于安全库存！">{{ dish.current_stock }} 份 ⚠️</span>
-                                {% else %}
-                                    {{ dish.current_stock }} 份
-                                {% endif %}
-                            </td>
+                            <td>{% if dish.current_stock <= dish.safety_stock %}<span class="text-red" title="低于安全库存！">{{ dish.current_stock }} 份 ⚠️</span>{% else %}{{ dish.current_stock }} 份{% endif %}</td>
                             <td style="color: var(--sub);">{{ dish.safety_stock }} 份</td>
-                            <td style="color: var(--sub); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                {{ dish.description|default:"-" }}
-                            </td>
+                            <td style="color: var(--sub); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ dish.description|default:"-" }}</td>
+                            
+                            {% if user.is_superuser %}
                             <td style="text-align: right;">
                                 <a href="{% url 'dish_edit' dish.id %}" class="action-link">编辑</a>
                                 <form action="{% url 'dish_delete' dish.id %}" method="POST" style="display:inline;" onsubmit="return confirm('确定要删除《{{ dish.name }}》吗？');">
@@ -166,10 +188,11 @@
                                     <button type="submit" style="background:none; border:none; padding:0; cursor:pointer;" class="action-link delete">删除</button>
                                 </form>
                             </td>
+                            {% endif %}
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px; color: var(--sub);">暂无菜品数据，请点击右上角新增</td>
+                            <td colspan="100%" style="text-align: center; padding: 40px; color: var(--sub);">暂无菜品数据，请点击右上角新增</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -183,9 +206,7 @@
                             <a href="?page=1{% if query_string %}&{{ query_string }}{% endif %}">首页</a>
                             <a href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">上一页</a>
                         {% endif %}
-                        
                         <span class="current">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span>
-
                         {% if page_obj.has_next %}
                             <a href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">下一页</a>
                             <a href="?page={{ page_obj.paginator.num_pages }}{% if query_string %}&{{ query_string }}{% endif %}">末页</a>
