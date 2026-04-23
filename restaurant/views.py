@@ -612,9 +612,12 @@ def order_delete(request, order_id):
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
-        fields = ['order_number',  'total_amount', 'payment_method', 'time_of_sale']
+        fields = ['order_number', 'item_name', 'category', 'quantity', 'total_amount', 'payment_method', 'time_of_sale']
         widgets = {
             'order_number': forms.TextInput(attrs={'class': 'form-control', 'required': 'required'}),
+            'item_name': forms.TextInput(attrs={'class': 'form-control', 'required': 'required'}),
+            'category': forms.TextInput(attrs={'class': 'form-control', 'required': 'required'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'required': 'required'}),
             'total_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'required': 'required'}),
             'payment_method': forms.TextInput(attrs={'class': 'form-control'}),
             'time_of_sale': forms.TextInput(attrs={'class': 'form-control'}),
