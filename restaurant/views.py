@@ -83,9 +83,9 @@ def _query_signature(params_dict):
     return '&'.join(f'{k}={v}' for k, v in items)
 
 def get_tomorrow_predicted_orders():
+    # 获取所有订单时间
     orders = list(Order.objects.order_by('order_time').values_list('order_time', flat=True))
     
-    # Holt-Winters 模型也需要一定的数据量来进行平滑计算，设定至少需要 14 天
     if len(orders) < 14:
         return 0.0, None, None, 0
 
@@ -94,7 +94,7 @@ def get_tomorrow_predicted_orders():
         d = timezone.localtime(dt).date()
         day_to_total[d] = day_to_total.get(d, 0) + 1
 
-    # 1. 构建连续的时间序列（将没有营业/没有订单的日期自动填充为 0）
+    # 1. 构建时间序列
     df = pd.DataFrame([{'date': k, 'count': v} for k, v in day_to_total.items()])
     df['date'] = pd.to_datetime(df['date'])
     df.set_index('date', inplace=True)
@@ -102,54 +102,51 @@ def get_tomorrow_predicted_orders():
 
     idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
     df = df.reindex(idx, fill_value=0)
-    y = df['count'].astype(float)
+    
+    # ==========================================
+    # 🌟 核心修改：只取最后 90 天数据
+    # ==========================================
+    y_raw = df['count'].astype(float)
+    y = y_raw.tail(90) 
 
     if len(y) < 14:
         return 0.0, None, None, 0
 
+    # 为了乘法模型安全，处理 0 值并平滑异常噪音
+    y_for_train = y.clip(lower=1.0)
+    mean_val, std_val = y_for_train.mean(), y_for_train.std()
+    y_smoothed = y_for_train.clip(lower=max(1.0, mean_val - 2 * std_val), upper=mean_val + 2 * std_val)
+
     try:
-        # 2. 构建并训练 Holt-Winters 三次指数平滑模型
         from statsmodels.tsa.holtwinters import ExponentialSmoothing
         
+        # 2. 训练乘法模型 (mul)
         model = ExponentialSmoothing(
-            y,
+            y_smoothed,
             trend='add',
-            seasonal='add',
+            seasonal='mul', 
             seasonal_periods=7,
             initialization_method="estimated"
         )
-        fit_model = model.fit()
+        fit_model = model.fit(optimized=True)
 
-        # 3. 提取历史拟合数据
         historical_fitted = fit_model.fittedvalues
-
-        # 4. 计算 MAPE 误差率（过滤掉实际销量为0的天数，防止除以0报错）
         valid_idx = y > 0
-        if valid_idx.any():
-            mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100)
-        else:
-            mape = None
+        mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100) if valid_idx.any() else None
 
-        # 5. 预测明天的单量 (步长 1)
         forecast = fit_model.forecast(1)
         tomorrow_predicted_orders = float(max(0.0, forecast.iloc[0]))
 
-        # 6. 组装历史对比数据
         actual_vs_pred_data = [
-            {
-                'date': date.strftime('%Y-%m-%d'),
-                'actual': int(actual_val),
-                'predicted': float(max(0.0, predicted_val)),
-            }
+            {'date': date.strftime('%Y-%m-%d'), 'actual': int(actual_val), 'predicted': float(max(0.0, predicted_val))}
             for date, actual_val, predicted_val in zip(y.index, y, historical_fitted)
         ]
 
     except Exception as e:
-        print(f"Holt-Winters 模型在计算明日备货单量时失败: {e}")
+        print(f"Holt-Winters 优化失败: {e}")
         return 0.0, None, None, 0
 
-    predicted_revenue = 0
-    return tomorrow_predicted_orders, mape, actual_vs_pred_data, predicted_revenue
+    return tomorrow_predicted_orders, mape, actual_vs_pred_data, 0
 
 @login_required
 def dashboard(request):
@@ -234,64 +231,53 @@ def dashboard(request):
     bottom_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (x['value'], x['name']))[:5]
     top_dishes = sorted([{'name': d['name'], 'value': dish_sales_map.get(d['name'], 0)} for d in all_dishes], key=lambda x: (-x['value'], x['name']))[:5]
 
+   # =========================================================
+    # 🌟 核心板块：时间序列预测 (Holt-Winters 近 90 天优化版)
     # =========================================================
-    # 🌟 核心板块：时间序列预测 (Holt-Winters 模型)
-    # =========================================================
-    historical_all = Order.objects.values('order_time')
-    pred_daily_dict = {}
-    for item in historical_all:
-        d_str = timezone.localtime(item['order_time']).strftime('%Y-%m-%d')
-        pred_daily_dict[d_str] = pred_daily_dict.get(d_str, 0) + 1
-        
-    predicted_orders = []
-    actual_vs_pred_data = []
-    mape = None
-    tomorrow_predicted_orders = 0
-    purchase_list = []
-    
-    # 🌟 Holt-Winters 模型需要一定的历史数据来进行平滑计算，这里设定至少需要 14 天数据
+    # --- 关键修复：在此处先定义初始值，防止 Pylance 报错 ---
+    predicted_orders = []       # 初始为空列表
+    actual_vs_pred_data = []    # 初始为空列表
+    mape = None                 # 初始为 None
+    tomorrow_predicted_orders = 0 # 初始为 0
     if pred_daily_dict and len(pred_daily_dict) >= 14:
-        # 1. 构建标准的时间序列 DataFrame
         df = pd.DataFrame([{'date': k, 'count': v} for k, v in pred_daily_dict.items()])
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
         df.sort_index(inplace=True)
         
-        # 补全可能缺失的营业日期，填充为 0
         idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
         df = df.reindex(idx, fill_value=0)
         
-        y = df['count'].astype(float)
+        # ==========================================
+        # 🌟 核心修改：截取近 90 天，提高预测敏感度
+        # ==========================================
+        y_raw = df['count'].astype(float)
+        y = y_raw.tail(90)
+        
+        y_for_train = y.clip(lower=1.0)
+        mean_val, std_val = y_for_train.mean(), y_for_train.std()
+        y_smoothed = y_for_train.clip(lower=max(1.0, mean_val - 2 * std_val), upper=mean_val + 2 * std_val)
 
         try:
-            # 2. 构建 Holt-Winters 三次指数平滑模型
             from statsmodels.tsa.holtwinters import ExponentialSmoothing
             
-            seasonal_opt = 'add' if len(y) >= 14 else None
-            periods_opt = 7 if len(y) >= 14 else None
-            
+            # 使用乘法季节性模型
             model = ExponentialSmoothing(
-                y, 
+                y_smoothed, 
                 trend='add', 
-                seasonal=seasonal_opt, 
-                seasonal_periods=periods_opt, 
+                seasonal='mul', 
+                seasonal_periods=7, 
                 initialization_method="estimated"
             )
-            fit_model = model.fit()
+            fit_model = model.fit(optimized=True)
 
-            # 3. 提取历史拟合数据 (用于图表对比和计算误差)
             historical_fitted = fit_model.fittedvalues
             historical_fitted_list = historical_fitted.tolist()
             
-            # 计算全量样本的 MAPE
-            # 过滤掉真实值为0的天数以防止除以0的数学错误
             valid_idx = y > 0
-            if valid_idx.any():
-                mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100)
-            else:
-                mape = 0
+            mape = float(mean_absolute_percentage_error(y[valid_idx], historical_fitted[valid_idx]) * 100) if valid_idx.any() else 0
 
-            # 组装最近 14 天的历史对比数据供前端大屏展示
+            # 组装最近 14 天对比数据
             display_days = min(14, len(y))
             for i in range(len(y) - display_days, len(y)):
                 actual_vs_pred_data.append({
@@ -300,28 +286,24 @@ def dashboard(request):
                     'predicted': max(0, int(round(historical_fitted_list[i])))
                 })
 
-            # 4. 🌟 预测未来 7 天
+            # 预测未来 7 天
             forecast_values = fit_model.forecast(7)
             forecast_list = forecast_values.tolist()
-            
             weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
             
             for i in range(7):
                 f_date = target_date + timedelta(days=i+1)
-                f_weekday = f_date.weekday()
                 p_count = forecast_list[i]
-                
                 predicted_orders.append({
-                    'date': f"{f_date.strftime('%Y-%m-%d')} ({weekdays_cn[f_weekday]})", 
+                    'date': f"{f_date.strftime('%Y-%m-%d')} ({weekdays_cn[f_date.weekday()]})", 
                     'predicted': max(0, int(round(p_count)))
                 })
             
             tomorrow_predicted_orders = predicted_orders[0]['predicted']
             
         except Exception as e:
-            print(f"Holt-Winters模型拟合失败，退回初始状态: {e}")
+            print(f"Dashboard 预测引擎故障: {e}")
             tomorrow_predicted_orders = 0
-
 
     # =======================================================
     # 🌟 核心修复 2：完全恢复与菜品管理一模一样的进销存公式

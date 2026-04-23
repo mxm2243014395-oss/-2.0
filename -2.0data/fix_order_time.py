@@ -37,8 +37,8 @@ def generate_real_restaurant_data():
         {'name': '瓦达汉堡', 'category': '快餐', 'price': 12.0, 'weight': 35},
     ]
     weights = [d['weight'] for d in dish_pool]
-    pay_methods = ['在线/刷卡', '现金', '其他']
-    pay_weights = [75, 20, 5]
+    pay_methods = ['在线支付', '现金', '其他']
+    pay_weights = [70, 20, 10]
 
     # ==========================================
     # 规律 2：精准的营业时段分布 (09:00 - 23:00)
