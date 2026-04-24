@@ -100,3 +100,88 @@ python manage.py collectstatic
 ```
 
 并使用 WSGI 服务加载 `wsgi.py` 进行生产部署（如 Gunicorn/uWSGI/Waitress），再按需在服务器侧配置 Nginx 反向代理。
+
+## 关键代码定位 (Key Code Locations)
+
+### 1) 后端数据聚合
+
+核心位置：`restaurant/views.py` 的 `dashboard_data_api` 与 `dashboard`。
+
+```python
+# 当日营业额聚合
+daily_revenue_agg = Order.objects.filter(
+    order_time__gte=aware_target_start,
+    order_time__lte=aware_target_end
+).aggregate(total=Sum('total_amount'))
+
+# 菜品分类营收占比（跨表聚合）
+cat_qs = OrderItem.objects.values('dish__category').annotate(
+    value=Sum(F('quantity') * F('price_at_purchase'))
+)
+
+# TOP 菜品销量
+dish_qs = OrderItem.objects.values('dish__name').annotate(
+    value=Sum('quantity')
+).order_by('-value')[:5]
+```
+
+时间序列预测中枢位置：`restaurant/views.py` 的 `_build_order_forecast_payload`。
+
+```python
+model = ExponentialSmoothing(
+    y,
+    trend='add',
+    seasonal='add',
+    seasonal_periods=7,
+    initialization_method="estimated"
+)
+fit_model = model.fit()
+forecast_all = fit_model.forecast(total_forecast_steps)
+```
+
+---
+
+### 2) 安全数据交互
+
+后端-前端安全数据注入位置：`templates/dashboard.html`，使用 Django `json_script` 避免字符串拼接带来的 XSS 风险。
+
+```html
+{{ predicted_orders|json_script:"predicted-orders-data" }}
+{{ actual_vs_pred_data|json_script:"actual-vs-pred-data-script" }}
+```
+
+页面/接口安全访问控制位置：`restaurant/views.py`。
+
+```python
+@login_required
+def dashboard(request):
+    if not request.user.is_superuser:
+        return redirect('dish_list')
+```
+
+---
+
+### 3) 前端图形渲染
+
+核心位置：`templates/dashboard.html` 脚本区。
+
+```javascript
+const futureData = JSON.parse(document.getElementById('predicted-orders-data').textContent || "[]");
+const historyData = JSON.parse(document.getElementById('actual-vs-pred-data-script').textContent || "[]");
+
+const response = await fetch('/api/dashboard-data/' + (params.toString() ? `?${params.toString()}` : ''));
+const data = await response.json();
+renderAll(data);
+
+window.addEventListener('resize', () => {
+    Object.values(charts).forEach(c => c.resize());
+    if (predictedChart) predictedChart.resize();
+});
+```
+
+路由绑定位置：`urls.py`。
+
+```python
+path('dashboard/', views.dashboard, name='dashboard'),
+path('api/dashboard-data/', views.dashboard_data_api, name='dashboard_data_api'),
+```
