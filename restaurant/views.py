@@ -118,18 +118,58 @@ def _build_order_forecast_payload():
         return empty_payload
 
     try:
-        model = ExponentialSmoothing(
+        # ==========================================
+        # 🌟 步骤 1：数据集切分 (80/20 Time-Series Split)
+        # ==========================================
+        train_size = int(len(y) * 0.8)
+        y_train, y_test = y.iloc[:train_size], y.iloc[train_size:]
+
+        mape_hw = None
+        mape_naive = None
+
+        # ==========================================
+        # 🌟 步骤 2：模型评估 (Out-of-Sample 盲测)
+        # ==========================================
+        if len(y_train) >= 14 and len(y_test) > 0:
+            model_hw = ExponentialSmoothing(
+                y_train,
+                trend='add',
+                seasonal='add',
+                seasonal_periods=7,
+                initialization_method="estimated"
+            )
+            fit_hw = model_hw.fit()
+
+            pred_hw = fit_hw.forecast(len(y_test))
+            valid_mask_hw = y_test > 0
+            if valid_mask_hw.any():
+                mape_hw = float(mean_absolute_percentage_error(y_test[valid_mask_hw], pred_hw[valid_mask_hw]) * 100)
+
+            naive_preds = []
+            full_series = pd.concat([y_train, y_test])
+            for i in range(len(y_test)):
+                current_idx = train_size + i
+                naive_val = full_series.iloc[current_idx - 7]
+                naive_preds.append(naive_val)
+            pred_naive = pd.Series(naive_preds, index=y_test.index)
+
+            valid_mask_naive = y_test > 0
+            if valid_mask_naive.any():
+                mape_naive = float(mean_absolute_percentage_error(y_test[valid_mask_naive], pred_naive[valid_mask_naive]) * 100)
+
+        # ==========================================
+        # 🌟 步骤 3：业务应用 (全量拟合与跨时空外推)
+        # ==========================================
+        final_model = ExponentialSmoothing(
             y,
             trend='add',
             seasonal='add',
             seasonal_periods=7,
             initialization_method="estimated"
         )
-        fit_model = model.fit()
-        historical_fitted = fit_model.fittedvalues
-
-        valid_mask = y > 0
-        mape = float(mean_absolute_percentage_error(y[valid_mask], historical_fitted[valid_mask]) * 100) if valid_mask.any() else None
+        final_fit = final_model.fit()
+        historical_fitted = final_fit.fittedvalues
+        mape = mape_hw
 
         actual_vs_pred_data = []
         display_days = min(14, len(y))
@@ -145,7 +185,7 @@ def _build_order_forecast_payload():
         days_gap = max(0, (real_today - last_db_date).days)
         total_forecast_steps = days_gap + 7
 
-        forecast_all = fit_model.forecast(total_forecast_steps)
+        forecast_all = final_fit.forecast(total_forecast_steps)
         weekdays_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
         predicted_orders = []
@@ -162,6 +202,7 @@ def _build_order_forecast_payload():
         return {
             'tomorrow_predicted_orders': tomorrow_predicted_orders,
             'mape': mape,
+            'mape_naive': mape_naive,
             'actual_vs_pred_data': actual_vs_pred_data,
             'predicted_orders': predicted_orders,
         }
@@ -332,7 +373,8 @@ def dashboard(request):
         'hourly_orders': hourly_orders,
         'actual_vs_pred_data': actual_vs_pred_data,
         'predicted_orders': predicted_orders,
-        'mape': round(mape, 2) if mape is not None else 0,
+        'mape_hw': round(forecast_payload.get('mape', 0), 2) if forecast_payload.get('mape') is not None else None,
+        'mape_naive': round(forecast_payload.get('mape_naive', 0), 2) if forecast_payload.get('mape_naive') is not None else None,
         'purchase_list': purchase_list,
         'predicted_revenue': float(tomorrow_predicted_orders * avg_order_value),
         'now': timezone.now(), 

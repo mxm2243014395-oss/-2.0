@@ -2,6 +2,7 @@ import os
 import sys
 import django
 import random
+import pandas as pd
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -13,7 +14,7 @@ if project_root not in sys.path:
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 django.setup()
 
-from restaurant.models import Order
+from restaurant.models import Order, Dish, OrderItem
 from django.utils import timezone
 
 def generate_real_restaurant_data():
@@ -66,12 +67,38 @@ def generate_real_restaurant_data():
         9: 0.95, 10: 1.05, 11: 1.15, 12: 1.35 
     }
 
-    orders_to_create = []
+    export_rows = []
     total_generated = 0
     total_revenue_simulated = 0 
     
-    # 清空数据库旧数据
+    # 清空数据库旧数据（Order 删除会级联删除其 OrderItem）
     Order.objects.all().delete()
+
+    # 确保菜品主数据存在，返回 name -> Dish 实例映射
+    dish_map = {}
+    for dish_def in dish_pool:
+        dish_obj, _ = Dish.objects.get_or_create(
+            name=dish_def['name'],
+            defaults={
+                'category': dish_def['category'],
+                'price': Decimal(str(dish_def['price'])),
+                'current_stock': 200,
+                'safety_stock': 30,
+                'description': f"{dish_def['category']}（自动生成）",
+            }
+        )
+        # 若历史数据中价格/分类不一致，按脚本标准同步一次
+        dirty = False
+        target_price = Decimal(str(dish_def['price']))
+        if dish_obj.category != dish_def['category']:
+            dish_obj.category = dish_def['category']
+            dirty = True
+        if dish_obj.price != target_price:
+            dish_obj.price = target_price
+            dirty = True
+        if dirty:
+            dish_obj.save(update_fields=['category', 'price'])
+        dish_map[dish_def['name']] = dish_obj
 
     for d in range(total_days + 1):
         current_day = start_date + timedelta(days=d)
@@ -138,33 +165,50 @@ def generate_real_restaurant_data():
             aware_dt = timezone.make_aware(naive_dt)
             order_sn = f"ORD{current_day.strftime('%Y%m%d')}{str(i+1).zfill(3)}"
 
-            order = Order(
+            payment_method = random.choices(pay_methods, weights=pay_weights)[0]
+            order = Order.objects.create(
                 order_number=order_sn,
                 order_time=aware_dt,
-                item_name=dish['name'],
-                quantity=quantity,
-                category=dish['category'],
                 total_amount=total_price,
-                payment_method=random.choices(pay_methods, weights=pay_weights)[0],
+                payment_method=payment_method,
                 time_of_sale=period
             )
-            orders_to_create.append(order)
+            OrderItem.objects.create(
+                order=order,
+                dish=dish_map[dish['name']],
+                quantity=quantity,
+                price_at_purchase=Decimal(str(dish['price'])),
+            )
+            export_rows.append({
+                'order_number': order_sn,
+                'order_time': aware_dt.replace(tzinfo=None),
+                'item_name': dish['name'],
+                'quantity': quantity,
+                'category': dish['category'],
+                'total_amount': float(total_price),
+                'payment_method': payment_method,
+                'time_of_sale': period,
+            })
             total_generated += 1
 
-            if len(orders_to_create) >= 2000:
-                Order.objects.bulk_create(orders_to_create)
-                orders_to_create = []
+            if total_generated % 2000 == 0:
                 print(f"   ⏳ 进度：{current_day.date()}，当前累计 {total_generated} 单")
 
-    if orders_to_create:
-        Order.objects.bulk_create(orders_to_create)
-
     avg_order_value = total_revenue_simulated / total_generated if total_generated > 0 else 0
+
+    # 导出为 Excel 到当前脚本所在目录（-2.0data）
+    output_dir = os.path.dirname(os.path.abspath(__file__))
+    output_file = os.path.join(output_dir, 'generated_orders_2023.xlsx')
+    export_df = pd.DataFrame(export_rows)
+    if not export_df.empty:
+        export_df = export_df.sort_values(by='order_time').reset_index(drop=True)
+    export_df.to_excel(output_file, index=False)
 
     print(f"\n✅ 数据生成完美收官！")
     print(f"📊 全年总单量：{total_generated} 单（日均约 {int(total_generated/365)} 单）")
     print(f"💰 全年总营业额：约 ¥{total_revenue_simulated:,.2f}")
     print(f"🎯 平均客单价：约 ¥{avg_order_value:.2f} /单")
+    print(f"📁 Excel 已导出：{output_file}")
 
 if __name__ == "__main__":
     generate_real_restaurant_data()
